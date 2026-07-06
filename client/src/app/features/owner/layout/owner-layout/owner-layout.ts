@@ -42,11 +42,7 @@ export class OwnerLayout {
   logout(): void {
     this.auth.logout().subscribe({
       next: () => this.router.navigate(['/login']),
-      error: () => {
-        // Clear local state and redirect even if server call fails
-        localStorage.removeItem('user');
-        this.router.navigate(['/login']);
-      },
+      error: () => this.router.navigate(['/login']),
     });
   }
 }

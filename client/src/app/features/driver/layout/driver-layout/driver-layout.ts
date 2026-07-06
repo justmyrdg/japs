@@ -21,9 +21,7 @@ export class DriverLayout {
   user = this.auth.getUser();
   sidebarOpen = signal(true);
 
-  navItems: NavItem[] = [
-    { label: 'My Schedule', icon: 'pi-calendar', route: 'dashboard' },
-  ];
+  navItems: NavItem[] = [{ label: 'My Schedule', icon: 'pi-calendar', route: 'dashboard' }];
 
   toggleSidebar(): void {
     this.sidebarOpen.update((v) => !v);
@@ -32,10 +30,7 @@ export class DriverLayout {
   logout(): void {
     this.auth.logout().subscribe({
       next: () => this.router.navigate(['/login']),
-      error: () => {
-        localStorage.removeItem('user');
-        this.router.navigate(['/login']);
-      },
+      error: () => this.router.navigate(['/login']),
     });
   }
 }

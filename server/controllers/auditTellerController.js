@@ -103,7 +103,9 @@ const getTrips = async (req, res) => {
         bus_id: busId,
         departure_time: {
           [Op.gte]: new Date(date + "T00:00:00"),
-          [Op.lt]: new Date(new Date(date).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+          [Op.lt]: new Date(
+            new Date(date).getTime() + 24 * 60 * 60 * 1000,
+          ).toISOString(),
         },
       },
       include: [
@@ -255,6 +257,62 @@ const createRemittance = async (req, res) => {
   }
 };
 
+// GET /api/audit-teller/remittances/:id
+// Get a single remittance with full details
+const getRemittanceById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const remittance = await Remittance.findByPk(id, {
+      include: [
+        {
+          model: BusModel,
+          attributes: ["id", "bus_number", "plate_number"],
+        },
+        {
+          model: User,
+          as: "driver",
+          attributes: ["id", "first_name", "last_name", "employee_id"],
+        },
+        {
+          model: User,
+          as: "conductor",
+          attributes: ["id", "first_name", "last_name", "employee_id"],
+        },
+        {
+          model: User,
+          as: "approver",
+          attributes: ["id", "first_name", "last_name"],
+        },
+        {
+          model: RemittanceExpense,
+          attributes: ["id", "expense_type", "amount"],
+        },
+        {
+          model: Trip,
+          attributes: [
+            "id",
+            "trip_number",
+            "departure_time",
+            "grand_total",
+            "ticket_number_start",
+            "ticket_number_end",
+          ],
+          include: [{ model: Route, attributes: ["origin", "destination"] }],
+        },
+      ],
+    });
+
+    if (!remittance) {
+      return res.status(404).json({ message: "Remittance not found." });
+    }
+
+    return res.json(remittance);
+  } catch (error) {
+    console.error("Error fetching remittance:", error);
+    return res.status(500).json({ message: "Internal server error." });
+  }
+};
+
 // PUT /api/audit-teller/remittances/:id/approve
 // Approve a remittance
 const approveRemittance = async (req, res) => {
@@ -309,6 +367,7 @@ const rejectRemittance = async (req, res) => {
 module.exports = {
   getStats,
   getRemittances,
+  getRemittanceById,
   getDrivers,
   getConductors,
   getTrips,
