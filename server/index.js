@@ -11,6 +11,7 @@ const fareSettingsRoutes = require("./routes/fareSettingsRoutes");
 const conductorRoutes = require("./routes/conductorRoutes");
 const driverRoutes = require("./routes/driverRoutes");
 const auditTellerRoutes = require("./routes/auditTellerRoutes");
+const ownerRoutes = require("./routes/ownerRoutes");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -32,6 +33,7 @@ app.use("/api/fare-settings", fareSettingsRoutes);
 app.use("/api/conductor", conductorRoutes);
 app.use("/api/driver", driverRoutes);
 app.use("/api/audit-teller", auditTellerRoutes);
+app.use("/api/owner", ownerRoutes);
 
 // DB sync + server start
 sequelize

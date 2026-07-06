@@ -34,10 +34,7 @@ export class AuditTellerLayout {
   logout(): void {
     this.auth.logout().subscribe({
       next: () => this.router.navigate(['/login']),
-      error: () => {
-        localStorage.removeItem('user');
-        this.router.navigate(['/login']);
-      },
+      error: () => this.router.navigate(['/login']),
     });
   }
 }

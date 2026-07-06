@@ -2,6 +2,7 @@ const express = require("express");
 const {
   getStats,
   getRemittances,
+  getRemittanceById,
   getDrivers,
   getConductors,
   getTrips,
@@ -19,6 +20,7 @@ router.use(authorize("audit_teller"));
 
 router.get("/stats", getStats);
 router.get("/remittances", getRemittances);
+router.get("/remittances/:id", getRemittanceById);
 router.get("/buses", getBuses);
 router.get("/drivers", getDrivers);
 router.get("/conductors", getConductors);

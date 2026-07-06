@@ -109,8 +109,21 @@ const updateTripStatus = async (req, res) => {
 
     const updateData = { status };
     if (status === "ongoing") {
-      // Don't overwrite if departure_time is already set
-      if (!trip.departure_time) {
+      // Enforce that the trip's scheduled date matches today
+      if (trip.departure_time) {
+        const tripDate = new Date(trip.departure_time);
+        const today = new Date();
+        const isSameDay =
+          tripDate.getFullYear() === today.getFullYear() &&
+          tripDate.getMonth() === today.getMonth() &&
+          tripDate.getDate() === today.getDate();
+        if (!isSameDay) {
+          return res.status(400).json({
+            message: `This trip is scheduled for ${tripDate.toDateString()} and cannot be started today.`,
+          });
+        }
+      } else {
+        // No departure_time yet — set it now (today's trip)
         updateData.departure_time = new Date();
       }
     } else if (status === "completed") {

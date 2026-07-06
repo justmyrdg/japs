@@ -71,4 +71,27 @@ const logout = (req, res) => {
   return res.status(200).json({ message: "Logged out successfully." });
 };
 
-module.exports = { login, logout };
+// GET /api/auth/me — returns current user from cookie/JWT
+const me = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, {
+      attributes: [
+        "id",
+        "employee_id",
+        "username",
+        "role",
+        "first_name",
+        "middle_name",
+        "last_name",
+        "email",
+        "contact_number",
+      ],
+    });
+    if (!user) return res.status(401).json({ message: "User not found." });
+    return res.json(user);
+  } catch (error) {
+    return res.status(500).json({ message: "Internal server error." });
+  }
+};
+
+module.exports = { login, logout, me };

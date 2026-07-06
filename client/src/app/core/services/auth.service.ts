@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { tap } from 'rxjs/operators';
+import { Observable, tap, catchError, of } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthUser, LoginResponse } from '../../shared/models/auth.models';
 
@@ -10,32 +10,39 @@ export type { AuthUser, LoginResponse };
 export class AuthService {
   private readonly API = `${environment.apiUrl}/api/auth`;
 
+  // In-memory only — never written to localStorage/sessionStorage
+  private _user = signal<AuthUser | null>(null);
+
   constructor(private http: HttpClient) {}
 
-  login(username: string, password: string) {
+  login(username: string, password: string): Observable<LoginResponse> {
     return this.http
       .post<LoginResponse>(`${this.API}/login`, { username, password }, { withCredentials: true })
-      .pipe(
-        tap((res) => {
-          // Token is in httpOnly cookie set by the server.
-          // Only store non-sensitive profile in localStorage.
-          localStorage.setItem('user', JSON.stringify(res.user));
-        }),
-      );
+      .pipe(tap((res) => this._user.set(res.user)));
   }
 
-  logout() {
+  logout(): Observable<void> {
     return this.http
       .post<void>(`${this.API}/logout`, {}, { withCredentials: true })
-      .pipe(tap(() => localStorage.removeItem('user')));
+      .pipe(tap(() => this._user.set(null)));
+  }
+
+  /** Fetch the current user from the server using the httpOnly cookie. */
+  fetchMe(): Observable<AuthUser | null> {
+    return this.http.get<AuthUser>(`${this.API}/me`, { withCredentials: true }).pipe(
+      tap((user) => this._user.set(user)),
+      catchError(() => {
+        this._user.set(null);
+        return of(null);
+      }),
+    );
   }
 
   getUser(): AuthUser | null {
-    const raw = localStorage.getItem('user');
-    return raw ? (JSON.parse(raw) as AuthUser) : null;
+    return this._user();
   }
 
   isLoggedIn(): boolean {
-    return !!this.getUser();
+    return this._user() !== null;
   }
 }
