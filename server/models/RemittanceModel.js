@@ -1,8 +1,8 @@
-const { DataTypes } = require('sequelize');
+const { DataTypes } = require("sequelize");
 
 module.exports = (sequelize) => {
   const Remittance = sequelize.define(
-    'Remittance',
+    "Remittance",
     {
       id: {
         type: DataTypes.INTEGER,
@@ -78,8 +78,8 @@ module.exports = (sequelize) => {
         allowNull: false,
       },
       status: {
-        type: DataTypes.ENUM('submitted', 'approved', 'rejected', 'finalized'),
-        defaultValue: 'submitted',
+        type: DataTypes.ENUM("submitted", "approved", "rejected", "finalized"),
+        defaultValue: "submitted",
       },
       submitted_at: {
         type: DataTypes.DATE,
@@ -93,12 +93,16 @@ module.exports = (sequelize) => {
         type: DataTypes.DATE,
         allowNull: true,
       },
+      teller_remarks: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
     },
     {
-      tableName: 'remittances',
+      tableName: "remittances",
       timestamps: true,
       underscored: true,
-    }
+    },
   );
 
   return Remittance;

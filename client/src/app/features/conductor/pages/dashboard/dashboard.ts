@@ -4,10 +4,10 @@ import { Router, RouterLink } from '@angular/router';
 import { DatePipe, CurrencyPipe } from '@angular/common';
 import { AlertService } from '../../../../core/services/alert.service';
 import { environment } from '../../../../../environments/environment';
-import { TablePagination } from '../../../../shared/components/table-pagination/table-pagination';
 
 export interface Trip {
   id: number;
+  bus_id: number;
   trip_number: number;
   status: 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
   departure_time: string;
@@ -32,7 +32,7 @@ type ViewMode = 'card' | 'table';
 
 @Component({
   selector: 'app-conductor-dashboard',
-  imports: [DatePipe, CurrencyPipe, RouterLink, TablePagination],
+  imports: [DatePipe, CurrencyPipe, RouterLink],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.css',
 })
@@ -96,6 +96,34 @@ export class ConductorDashboard implements OnInit {
   scheduledTodayCount = computed(
     () => this.todayTrips().filter((t) => t.status === 'scheduled').length,
   );
+
+  /**
+   * Returns true if this trip can be started right now.
+   * Rule: no earlier-numbered trip on the same bus today is still 'scheduled'.
+   */
+  canStartTrip = computed(() => {
+    const todayStr = this.todayStr;
+    const trips = this.trips();
+    // Build a set of (bus_id, trip_number) pairs that are still scheduled today
+    const scheduledToday = trips.filter(
+      (t) => t.status === 'scheduled' && t.departure_time?.split('T')[0] === todayStr,
+    );
+    // For each trip return whether it's the next one to start
+    const result = new Map<number, boolean>();
+    for (const trip of trips) {
+      if (trip.status !== 'scheduled') {
+        result.set(trip.id, false);
+        continue;
+      }
+      const busId = (trip as any).bus_id ?? trip.BusModel?.id;
+      const blockers = scheduledToday.filter((t) => {
+        const tBusId = (t as any).bus_id ?? t.BusModel?.id;
+        return tBusId === busId && t.trip_number < trip.trip_number;
+      });
+      result.set(trip.id, blockers.length === 0);
+    }
+    return result;
+  });
 
   constructor() {
     // Reset page on tab change

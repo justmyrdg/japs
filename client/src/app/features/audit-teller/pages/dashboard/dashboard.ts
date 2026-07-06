@@ -1,7 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { RouterLink } from '@angular/router';
-import { CurrencyPipe } from '@angular/common';
 import { environment } from '../../../../../environments/environment';
 
 interface DashboardStats {
@@ -13,7 +11,7 @@ interface DashboardStats {
 
 @Component({
   selector: 'app-audit-teller-dashboard',
-  imports: [RouterLink, CurrencyPipe],
+  imports: [],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.css',
 })

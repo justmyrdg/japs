@@ -1,19 +1,41 @@
-const { Op } = require('sequelize');
-const { BusModel, User, Trip, Route, BusCrewHistory } = require('../models');
+const { Op } = require("sequelize");
+const { BusModel, User, Trip, Route, BusCrewHistory } = require("../models");
 
 const busInclude = [
-  { model: User, as: 'driver', attributes: ['id', 'first_name', 'last_name', 'employee_id'], foreignKey: 'driver_id' },
-  { model: User, as: 'conductor', attributes: ['id', 'first_name', 'last_name', 'employee_id'], foreignKey: 'conductor_id' },
+  {
+    model: User,
+    as: "driver",
+    attributes: ["id", "first_name", "last_name", "employee_id"],
+    foreignKey: "driver_id",
+  },
+  {
+    model: User,
+    as: "conductor",
+    attributes: ["id", "first_name", "last_name", "employee_id"],
+    foreignKey: "conductor_id",
+  },
 ];
 
 // GET /api/buses
 const getBuses = async (req, res) => {
   const buses = await BusModel.findAll({
-    order: [['bus_number', 'ASC']],
+    order: [["bus_number", "ASC"]],
     include: [
-      { model: User, as: 'assignedDriver', attributes: ['id', 'first_name', 'last_name', 'employee_id'] },
-      { model: User, as: 'assignedConductor', attributes: ['id', 'first_name', 'last_name', 'employee_id'] },
-      { model: Route, as: 'defaultRoute', attributes: ['id', 'origin', 'destination'] },
+      {
+        model: User,
+        as: "assignedDriver",
+        attributes: ["id", "first_name", "last_name", "employee_id"],
+      },
+      {
+        model: User,
+        as: "assignedConductor",
+        attributes: ["id", "first_name", "last_name", "employee_id"],
+      },
+      {
+        model: Route,
+        as: "defaultRoute",
+        attributes: ["id", "origin", "destination"],
+      },
     ],
   });
   return res.json(buses);
@@ -22,23 +44,34 @@ const getBuses = async (req, res) => {
 // POST /api/buses
 const createBus = async (req, res) => {
   const { bus_number, plate_number, capacity, status } = req.body;
-  const bus = await BusModel.create({ bus_number, plate_number, capacity, status });
+  const bus = await BusModel.create({
+    bus_number,
+    plate_number,
+    capacity,
+    status,
+  });
   return res.status(201).json(bus);
 };
 
 // PUT /api/buses/:id
 const updateBus = async (req, res) => {
   const bus = await BusModel.findByPk(req.params.id);
-  if (!bus) return res.status(404).json({ message: 'Bus not found.' });
+  if (!bus) return res.status(404).json({ message: "Bus not found." });
   const { bus_number, plate_number, capacity, status, route_id } = req.body;
-  await bus.update({ bus_number, plate_number, capacity, status, route_id: route_id ?? null });
+  await bus.update({
+    bus_number,
+    plate_number,
+    capacity,
+    status,
+    route_id: route_id ?? null,
+  });
   return res.json(bus);
 };
 
 // DELETE /api/buses/:id
 const deleteBus = async (req, res) => {
   const bus = await BusModel.findByPk(req.params.id);
-  if (!bus) return res.status(404).json({ message: 'Bus not found.' });
+  if (!bus) return res.status(404).json({ message: "Bus not found." });
   await bus.destroy();
   return res.status(204).send();
 };
@@ -46,7 +79,7 @@ const deleteBus = async (req, res) => {
 // PUT /api/buses/:id/assign-crew
 const assignCrew = async (req, res) => {
   const bus = await BusModel.findByPk(req.params.id);
-  if (!bus) return res.status(404).json({ message: 'Bus not found.' });
+  if (!bus) return res.status(404).json({ message: "Bus not found." });
 
   const { driver_id, conductor_id } = req.body;
   const now = new Date();
@@ -54,7 +87,7 @@ const assignCrew = async (req, res) => {
   // Close any open history record for this bus
   await BusCrewHistory.update(
     { unassigned_at: now },
-    { where: { bus_id: bus.id, unassigned_at: null } }
+    { where: { bus_id: bus.id, unassigned_at: null } },
   );
 
   // Only create a new history row if there's actually someone being assigned
@@ -67,7 +100,10 @@ const assignCrew = async (req, res) => {
     });
   }
 
-  await bus.update({ driver_id: driver_id || null, conductor_id: conductor_id || null });
+  await bus.update({
+    driver_id: driver_id || null,
+    conductor_id: conductor_id || null,
+  });
   return res.json(bus);
 };
 
@@ -76,45 +112,126 @@ const getTrips = async (req, res) => {
   let start, end;
 
   if (req.query.startDate && req.query.endDate) {
-    start = new Date(req.query.startDate); start.setHours(0, 0, 0, 0);
-    end   = new Date(req.query.endDate);   end.setHours(23, 59, 59, 999);
+    start = new Date(req.query.startDate);
+    start.setHours(0, 0, 0, 0);
+    end = new Date(req.query.endDate);
+    end.setHours(23, 59, 59, 999);
   } else {
-    const date = req.query.date ? new Date(req.query.date) : (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d; })();
-    start = new Date(date); start.setHours(0, 0, 0, 0);
-    end   = new Date(date); end.setHours(23, 59, 59, 999);
+    const date = req.query.date
+      ? new Date(req.query.date)
+      : (() => {
+          const d = new Date();
+          d.setDate(d.getDate() + 1);
+          return d;
+        })();
+    start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    end = new Date(date);
+    end.setHours(23, 59, 59, 999);
   }
 
   const trips = await Trip.findAll({
     where: { departure_time: { [Op.between]: [start, end] } },
     include: [
-      { model: BusModel, attributes: ['id', 'bus_number', 'plate_number'] },
-      { model: Route, attributes: ['id', 'origin', 'destination'] },
-      { model: User, as: 'driver', attributes: ['id', 'first_name', 'last_name'] },
-      { model: User, as: 'conductor', attributes: ['id', 'first_name', 'last_name'] },
+      { model: BusModel, attributes: ["id", "bus_number", "plate_number"] },
+      { model: Route, attributes: ["id", "origin", "destination"] },
+      {
+        model: User,
+        as: "driver",
+        attributes: ["id", "first_name", "last_name"],
+      },
+      {
+        model: User,
+        as: "conductor",
+        attributes: ["id", "first_name", "last_name"],
+      },
     ],
-    order: [['departure_time', 'ASC']],
+    order: [["departure_time", "ASC"]],
   });
   return res.json(trips);
 };
 
 // POST /api/buses/trips
 const createTrip = async (req, res) => {
-  const { bus_id, route_id, driver_id, conductor_id, trip_number, departure_time } = req.body;
-  const trip = await Trip.create({ bus_id, route_id, driver_id, conductor_id, trip_number, departure_time, status: 'scheduled' });
+  const {
+    bus_id,
+    route_id,
+    driver_id,
+    conductor_id,
+    trip_number,
+    departure_time,
+  } = req.body;
+  const trip = await Trip.create({
+    bus_id,
+    route_id,
+    driver_id,
+    conductor_id,
+    trip_number,
+    departure_time,
+    status: "scheduled",
+  });
   return res.status(201).json(trip);
+};
+
+// POST /api/buses/trips/bulk — create multiple trips, trip numbers auto-assigned
+const createTripsBulk = async (req, res) => {
+  const { bus_id, driver_id, conductor_id, date, trips } = req.body;
+  // trips = [{ route_id, departure_time }]
+  if (
+    !bus_id ||
+    !driver_id ||
+    !conductor_id ||
+    !date ||
+    !Array.isArray(trips) ||
+    trips.length === 0
+  ) {
+    return res.status(400).json({
+      message:
+        "bus_id, driver_id, conductor_id, date, and trips[] are required.",
+    });
+  }
+
+  // Find the highest existing trip_number for this bus on this date
+  const dayStart = new Date(date + "T00:00:00");
+  const dayEnd = new Date(date + "T23:59:59");
+  const existing = await Trip.findAll({
+    where: {
+      bus_id,
+      departure_time: { [Op.between]: [dayStart, dayEnd] },
+    },
+    order: [["trip_number", "DESC"]],
+    limit: 1,
+  });
+  let nextTripNumber = existing.length > 0 ? existing[0].trip_number + 1 : 1;
+
+  const created = [];
+  for (const t of trips) {
+    const trip = await Trip.create({
+      bus_id,
+      route_id: t.route_id,
+      driver_id,
+      conductor_id,
+      trip_number: nextTripNumber++,
+      departure_time: t.departure_time,
+      status: "scheduled",
+    });
+    created.push(trip);
+  }
+
+  return res.status(201).json(created);
 };
 
 // DELETE /api/buses/trips/:id
 const deleteTrip = async (req, res) => {
   const trip = await Trip.findByPk(req.params.id);
-  if (!trip) return res.status(404).json({ message: 'Trip not found.' });
+  if (!trip) return res.status(404).json({ message: "Trip not found." });
   await trip.destroy();
   return res.status(204).send();
 };
 
 // GET /api/buses/routes
 const getRoutes = async (req, res) => {
-  const routes = await Route.findAll({ order: [['origin', 'ASC']] });
+  const routes = await Route.findAll({ order: [["origin", "ASC"]] });
   return res.json(routes);
 };
 
@@ -123,12 +240,32 @@ const getCrewHistory = async (req, res) => {
   const history = await BusCrewHistory.findAll({
     where: { bus_id: req.params.id },
     include: [
-      { model: User, as: 'driver', attributes: ['id', 'first_name', 'last_name', 'employee_id'] },
-      { model: User, as: 'conductor', attributes: ['id', 'first_name', 'last_name', 'employee_id'] },
+      {
+        model: User,
+        as: "driver",
+        attributes: ["id", "first_name", "last_name", "employee_id"],
+      },
+      {
+        model: User,
+        as: "conductor",
+        attributes: ["id", "first_name", "last_name", "employee_id"],
+      },
     ],
-    order: [['assigned_at', 'DESC']],
+    order: [["assigned_at", "DESC"]],
   });
   return res.json(history);
 };
 
-module.exports = { getBuses, createBus, updateBus, deleteBus, assignCrew, getCrewHistory, getTrips, createTrip, deleteTrip, getRoutes };
+module.exports = {
+  getBuses,
+  createBus,
+  updateBus,
+  deleteBus,
+  assignCrew,
+  getCrewHistory,
+  getTrips,
+  createTrip,
+  createTripsBulk,
+  deleteTrip,
+  getRoutes,
+};

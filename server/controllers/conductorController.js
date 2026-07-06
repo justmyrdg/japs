@@ -126,6 +126,32 @@ const updateTripStatus = async (req, res) => {
         // No departure_time yet — set it now (today's trip)
         updateData.departure_time = new Date();
       }
+
+      // Enforce sequential order: no earlier scheduled trip on the same bus today
+      const today = new Date();
+      const dayStart = new Date(today);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(today);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const blockers = await Trip.findAll({
+        where: {
+          bus_id: trip.bus_id,
+          conductor_id: conductorId,
+          trip_number: { [Op.lt]: trip.trip_number },
+          status: "scheduled",
+          departure_time: { [Op.between]: [dayStart, dayEnd] },
+        },
+      });
+
+      if (blockers.length > 0) {
+        const blockingNums = blockers
+          .map((b) => `#${b.trip_number}`)
+          .join(", ");
+        return res.status(400).json({
+          message: `You must complete trip${blockers.length > 1 ? "s" : ""} ${blockingNums} before starting this one.`,
+        });
+      }
     } else if (status === "completed") {
       updateData.arrival_time = new Date();
     }
@@ -200,7 +226,7 @@ const printTicket = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
-    const { category, fare, ticketNumber, distance } = req.body;
+    const { category, fare, distance } = req.body;
     const conductorId = req.user.id;
 
     const trip = await Trip.findOne({
@@ -212,7 +238,15 @@ const printTicket = async (req, res) => {
       return res.status(404).json({ message: "Trip not found." });
     }
 
-    // 1. Create individual ticket record
+    // 1. Auto-generate ticket number (last for this trip + 1, starting at 1)
+    const lastTicket = await Ticket.findOne({
+      where: { trip_id: id },
+      order: [["ticket_number", "DESC"]],
+      transaction,
+    });
+    const ticketNumber = lastTicket ? Number(lastTicket.ticket_number) + 1 : 1;
+
+    // 2. Create individual ticket record
     const ticket = await Ticket.create(
       {
         trip_id: id,
@@ -225,15 +259,12 @@ const printTicket = async (req, res) => {
       { transaction },
     );
 
-    // 2. Update Trip Grand Total
+    // 3. Update Trip Grand Total
     const newGrandTotal = Number(trip.grand_total) + Number(fare);
 
-    // 3. Update Ticket Number Range
-    let ticketStart = trip.ticket_number_start;
-    let ticketEnd = ticketNumber;
-    if (!ticketStart) {
-      ticketStart = ticketNumber;
-    }
+    // 4. Update Ticket Number Range
+    const ticketStart = trip.ticket_number_start ?? ticketNumber;
+    const ticketEnd = ticketNumber;
 
     await trip.update(
       {
@@ -244,7 +275,7 @@ const printTicket = async (req, res) => {
       { transaction },
     );
 
-    // 4. Increment Passenger Count Category
+    // 5. Increment Passenger Count Category
     const [pc, created] = await PassengerCount.findOrCreate({
       where: { trip_id: id, category },
       defaults: { count: 0 },
@@ -458,9 +489,34 @@ const getRemittances = async (req, res) => {
         {
           model: User,
           as: "driver",
+          attributes: ["id", "first_name", "last_name", "employee_id"],
+        },
+        {
+          model: User,
+          as: "conductor",
+          attributes: ["id", "first_name", "last_name", "employee_id"],
+        },
+        {
+          model: User,
+          as: "approver",
           attributes: ["id", "first_name", "last_name"],
         },
-        { model: RemittanceExpense },
+        {
+          model: RemittanceExpense,
+          attributes: ["id", "expense_type", "amount"],
+        },
+        {
+          model: Trip,
+          attributes: [
+            "id",
+            "trip_number",
+            "departure_time",
+            "grand_total",
+            "ticket_number_start",
+            "ticket_number_end",
+          ],
+          include: [{ model: Route, attributes: ["origin", "destination"] }],
+        },
       ],
       order: [["submitted_at", "DESC"]],
     });

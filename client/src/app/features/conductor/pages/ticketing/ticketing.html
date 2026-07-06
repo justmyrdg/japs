@@ -6,42 +6,22 @@
 </div>
 
 <!-- Select Active Trip -->
-<div class="bg-white rounded-2xl p-5 shadow-md border border-gray-100 mb-6">
-  <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2"
-    >Select Active / Ongoing Trip</label
+<div class="mb-6">
+  <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+    Select Active / Ongoing Trip
+  </label>
+  <select
+    (change)="selectTrip(+$any($event.target).value)"
+    class="w-full sm:w-96 text-sm border border-gray-300 rounded-xl px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white text-gray-700 cursor-pointer"
   >
-  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+    <option value="" disabled [selected]="!selectedTripId()">— Select a trip —</option>
     @for (t of trips(); track t.id) {
-      <button
-        (click)="selectTrip(t.id)"
-        class="text-left px-4 py-3 rounded-xl border-2 transition-all cursor-pointer"
-        [class.border-blue-500]="selectedTripId() === t.id"
-        [class.bg-blue-50/30]="selectedTripId() === t.id"
-        [class.border-gray-200]="selectedTripId() !== t.id"
-        [class.hover:border-blue-300]="selectedTripId() !== t.id"
-      >
-        <div class="flex items-center justify-between mb-1">
-          <span class="font-bold text-gray-800">Trip #{{ t.trip_number }}</span>
-          <span
-            class="px-2 py-0.5 text-[9px] font-bold rounded-full uppercase tracking-wider"
-            [class.bg-amber-100]="t.status === 'ongoing'"
-            [class.text-amber-800]="t.status === 'ongoing'"
-            [class.bg-green-100]="t.status === 'completed'"
-            [class.text-green-800]="t.status === 'completed'"
-          >
-            {{ t.status }}
-          </span>
-        </div>
-        <div class="text-xs text-gray-600 font-medium truncate">
-          {{ t.Route?.origin }} → {{ t.Route?.destination }}
-        </div>
-        <div class="text-[10px] text-gray-400 mt-1 flex justify-between">
-          <span>Bus {{ t.BusModel?.bus_number }}</span>
-          <span>Sales: {{ t.grand_total | currency: 'PHP' }}</span>
-        </div>
-      </button>
+      <option [value]="t.id" [selected]="selectedTripId() === t.id">
+        Trip #{{ t.trip_number }} · {{ t.Route?.origin }} → {{ t.Route?.destination }} · Bus
+        {{ t.BusModel?.bus_number }} ({{ t.status }})
+      </option>
     }
-  </div>
+  </select>
 </div>
 
 @if (selectedTrip()) {
@@ -54,32 +34,20 @@
       </div>
 
       <form [formGroup]="ticketForm" (ngSubmit)="printTicketSubmit()" class="space-y-5">
-        <!-- Ticket Number -->
-        <div>
-          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2"
-            >Ticket Number <span class="text-red-500">*</span></label
+        <!-- Next ticket number preview -->
+        <div
+          class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3"
+        >
+          <span class="text-xs font-bold text-gray-500 uppercase tracking-wider"
+            >Next Ticket #</span
           >
-          <div class="relative">
-            <i class="pi pi-hashtag absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            <input
-              formControlName="ticketNumber"
-              type="text"
-              placeholder="e.g. 100024"
-              class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm font-semibold"
-            />
-          </div>
-          @if (
-            ticketForm.get('ticketNumber')?.touched &&
-            ticketForm.get('ticketNumber')?.errors?.['required']
-          ) {
-            <p class="text-red-500 text-xs mt-1">Ticket Number is required.</p>
-          }
-          @if (
-            ticketForm.get('ticketNumber')?.touched &&
-            ticketForm.get('ticketNumber')?.errors?.['pattern']
-          ) {
-            <p class="text-red-500 text-xs mt-1">Ticket Number must be numeric characters only.</p>
-          }
+          <span class="font-black text-gray-800 text-lg">
+            @if (selectedTrip()?.ticket_number_end) {
+              {{ +selectedTrip()!.ticket_number_end! + 1 }}
+            } @else {
+              1
+            }
+          </span>
         </div>
 
         <!-- Passenger Fare Category Selector -->
@@ -327,6 +295,10 @@
 
         <!-- Fare details -->
         <div class="space-y-2">
+          <div class="flex justify-between">
+            <span>Distance:</span>
+            <span>{{ lastPrintedTicket()?.distance }} km</span>
+          </div>
           <div class="flex justify-between font-semibold">
             <span class="capitalize">Category ({{ lastPrintedTicket()?.category }}):</span>
             <span>₱{{ lastPrintedTicket()?.fare | number: '1.2-2' }}</span>

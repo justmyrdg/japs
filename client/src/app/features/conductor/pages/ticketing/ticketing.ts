@@ -75,7 +75,6 @@ export class TicketingPage implements OnInit {
 
   constructor() {
     this.ticketForm = this.fb.group({
-      ticketNumber: ['', [Validators.required, Validators.pattern('^[0-9]+$')]],
       category: ['regular', Validators.required],
       distance: [5, [Validators.required, Validators.min(0.1)]],
       fare: [0, [Validators.required, Validators.min(0)]],
@@ -137,7 +136,6 @@ export class TicketingPage implements OnInit {
     this.selectedTripId.set(tripId);
     this.loadPassengerCounts(tripId);
     this.autoCalculateFare();
-    this.generateNextTicketNumber();
   }
 
   loadPassengerCounts(tripId: number): void {
@@ -148,20 +146,6 @@ export class TicketingPage implements OnInit {
       .subscribe({
         next: (data) => this.passengerCounts.set(data),
       });
-  }
-
-  generateNextTicketNumber(): void {
-    const trip = this.selectedTrip();
-    if (trip && trip.ticket_number_end) {
-      const lastNum = parseInt(trip.ticket_number_end, 10);
-      if (!isNaN(lastNum)) {
-        const nextNum = (lastNum + 1).toString().padStart(trip.ticket_number_end.length, '0');
-        this.ticketForm.patchValue({ ticketNumber: nextNum });
-        return;
-      }
-    }
-    // Default fallback
-    this.ticketForm.patchValue({ ticketNumber: '100001' });
   }
 
   autoCalculateFare(): void {
@@ -245,7 +229,6 @@ export class TicketingPage implements OnInit {
     this.isPrinting.set(true);
     const formValue = this.ticketForm.value;
     const payload = {
-      ticketNumber: formValue.ticketNumber,
       category: formValue.category,
       distance: formValue.distance,
       fare: formValue.fare,
@@ -257,7 +240,7 @@ export class TicketingPage implements OnInit {
         next: (res) => {
           this.isPrinting.set(false);
           this.lastPrintedTicket.set({
-            ticketNumber: payload.ticketNumber,
+            ticketNumber: res.ticket?.ticket_number,
             category: payload.category,
             distance: payload.distance,
             fare: payload.fare,
@@ -271,9 +254,6 @@ export class TicketingPage implements OnInit {
           // Refresh local trip info & counts
           this.loadTrips();
           this.loadPassengerCounts(tripId);
-
-          // Prepare for next ticket
-          this.generateNextTicketNumber();
         },
         error: (err) => {
           this.isPrinting.set(false);

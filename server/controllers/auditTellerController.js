@@ -313,6 +313,65 @@ const getRemittanceById = async (req, res) => {
   }
 };
 
+// PUT /api/audit-teller/remittances/:id
+// Update (correct) a submitted remittance — recalculates derived totals
+const updateRemittance = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const remittance = await Remittance.findByPk(id);
+    if (!remittance)
+      return res.status(404).json({ message: "Remittance not found." });
+    if (remittance.status === "approved") {
+      return res
+        .status(400)
+        .json({ message: "Cannot edit an already-approved remittance." });
+    }
+
+    const {
+      gross_income,
+      total_expenses,
+      driver_commission,
+      conductor_commission,
+      bonus_allowance,
+      other_deductions,
+      cash_deposit,
+      driver_officer_share,
+      conductor_officer_share,
+      teller_remarks,
+    } = req.body;
+
+    const netGross = Number(gross_income) - Number(total_expenses);
+    const totalLess =
+      Number(driver_commission) +
+      Number(conductor_commission) +
+      Number(bonus_allowance || 0) +
+      Number(other_deductions || 0) +
+      Number(cash_deposit);
+    const netCollection = netGross - totalLess;
+
+    await remittance.update({
+      gross_income,
+      total_expenses,
+      net_gross: netGross,
+      driver_commission,
+      conductor_commission,
+      bonus_allowance: bonus_allowance || 0,
+      other_deductions: other_deductions || 0,
+      cash_deposit,
+      total_less: totalLess,
+      net_collection: netCollection,
+      driver_officer_share: driver_officer_share || 0,
+      conductor_officer_share: conductor_officer_share || 0,
+      teller_remarks: teller_remarks || null,
+    });
+
+    return res.json(remittance);
+  } catch (error) {
+    console.error("Error updating remittance:", error);
+    return res.status(500).json({ message: "Internal server error." });
+  }
+};
+
 // PUT /api/audit-teller/remittances/:id/approve
 // Approve a remittance
 const approveRemittance = async (req, res) => {
@@ -372,6 +431,7 @@ module.exports = {
   getConductors,
   getTrips,
   createRemittance,
+  updateRemittance,
   approveRemittance,
   rejectRemittance,
 };

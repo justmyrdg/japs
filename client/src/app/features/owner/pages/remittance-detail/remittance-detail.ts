@@ -21,6 +21,7 @@ interface RemittanceDetail {
   net_collection: number;
   driver_officer_share: number;
   conductor_officer_share: number;
+  teller_remarks: string | null;
   status: 'submitted' | 'approved' | 'rejected';
   submitted_at: string;
   approved_at: string | null;

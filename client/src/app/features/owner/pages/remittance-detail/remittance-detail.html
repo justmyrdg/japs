@@ -36,6 +36,17 @@
     </span>
   </div>
 
+  @if (remittance()!.teller_remarks) {
+    <div
+      class="flex items-start gap-2 bg-blue-50 border border-blue-200 text-blue-700 text-sm px-4 py-3 rounded-lg mb-6"
+    >
+      <i class="pi pi-comment mt-0.5 shrink-0"></i>
+      <div>
+        <span class="font-semibold">Teller Remarks:</span> {{ remittance()!.teller_remarks }}
+      </div>
+    </div>
+  }
+
   <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
     <!-- LEFT -->
     <div class="xl:col-span-2 space-y-6">
