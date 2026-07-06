@@ -1,0 +1,84 @@
+<div class="flex h-screen bg-gray-100">
+  <!-- ─── Sidebar ──────────────────────────────────────────────────────── -->
+  <aside
+    class="flex flex-col bg-[#1E5AAA] text-white transition-all duration-300"
+    [class.w-64]="sidebarOpen()"
+    [class.w-16]="!sidebarOpen()"
+  >
+    <!-- Logo -->
+    <div class="flex items-center gap-3 px-4 py-5 border-b border-white/10">
+      <img
+        src="assets/images/JAPS (white).png"
+        alt="JAPS"
+        class="h-7 shrink-0"
+        [class.hidden]="!sidebarOpen()"
+      />
+      <button
+        (click)="toggleSidebar()"
+        class="ml-auto p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+        [attr.aria-label]="sidebarOpen() ? 'Collapse sidebar' : 'Expand sidebar'"
+      >
+        <i
+          class="pi text-lg"
+          [class.pi-angle-double-left]="sidebarOpen()"
+          [class.pi-angle-double-right]="!sidebarOpen()"
+        ></i>
+      </button>
+    </div>
+
+    <!-- Nav items -->
+    <nav class="flex-1 py-4 space-y-1 px-2 overflow-y-auto">
+      @for (item of navItems; track item.route) {
+        <a
+          [routerLink]="item.route"
+          routerLinkActive="bg-white/20 font-semibold"
+          class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/10 transition-colors duration-150 text-sm text-white/90 hover:text-white"
+        >
+          <i [class]="'pi ' + item.icon + ' text-base shrink-0'"></i>
+          @if (sidebarOpen()) {
+            <span>{{ item.label }}</span>
+          }
+        </a>
+      }
+    </nav>
+
+    <!-- User + logout -->
+    <div class="border-t border-white/10 p-3">
+      @if (sidebarOpen()) {
+        <div class="px-2 py-2 mb-1">
+          <p class="text-xs text-white/60">Logged in as</p>
+          <p class="text-sm font-medium truncate">{{ user?.first_name }} {{ user?.last_name }}</p>
+          <p class="text-xs text-white/50 capitalize">{{ user?.role }}</p>
+        </div>
+      }
+      <button
+        (click)="logout()"
+        class="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-white/10 transition-colors duration-150 text-sm text-white/80 hover:text-white cursor-pointer"
+      >
+        <i class="pi pi-sign-out text-base shrink-0"></i>
+        @if (sidebarOpen()) {
+          <span>Logout</span>
+        }
+      </button>
+    </div>
+  </aside>
+
+  <!-- ─── Main content ─────────────────────────────────────────────────── -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <!-- Top bar -->
+    <header
+      class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0"
+    >
+      <h1 class="text-base font-semibold text-gray-800">Driver Portal</h1>
+      <div class="flex items-center gap-2 text-sm text-gray-500">
+        <i class="pi pi-user text-[#1E5AAA]"></i>
+        <span>{{ user?.first_name }} {{ user?.last_name }}</span>
+      </div>
+    </header>
+
+    <!-- Page content -->
+    <main class="flex-1 overflow-y-auto p-6">
+      <router-outlet />
+    </main>
+  </div>
+</div>

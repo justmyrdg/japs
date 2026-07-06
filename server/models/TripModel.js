@@ -1,0 +1,70 @@
+const { DataTypes } = require("sequelize");
+
+module.exports = (sequelize) => {
+  const Trip = sequelize.define(
+    "Trip",
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+      },
+      remittance_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      bus_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      route_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      driver_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      conductor_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      trip_number: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      ticket_number_start: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      ticket_number_end: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      grand_total: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+      departure_time: {
+        type: DataTypes.DATE,
+        allowNull: false,
+      },
+      arrival_time: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      status: {
+        type: DataTypes.ENUM("scheduled", "ongoing", "completed", "cancelled"),
+        defaultValue: "scheduled",
+      },
+    },
+    {
+      tableName: "trips",
+      timestamps: true,
+      underscored: true,
+    },
+  );
+
+  return Trip;
+};

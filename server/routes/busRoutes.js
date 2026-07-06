@@ -1,0 +1,24 @@
+const express = require('express');
+const router = express.Router();
+const {
+  getBuses, createBus, updateBus, deleteBus,
+  assignCrew, getCrewHistory, getTrips, createTrip, deleteTrip, getRoutes,
+} = require('../controllers/busController');
+const { authenticate, authorize } = require('../middleware/auth');
+
+router.use(authenticate, authorize('owner'));
+
+router.get('/', getBuses);
+router.post('/', createBus);
+router.put('/:id', updateBus);
+router.delete('/:id', deleteBus);
+router.put('/:id/assign-crew', assignCrew);
+router.get('/:id/crew-history', getCrewHistory);
+
+router.get('/trips', getTrips);
+router.post('/trips', createTrip);
+router.delete('/trips/:id', deleteTrip);
+
+router.get('/routes', getRoutes);
+
+module.exports = router;

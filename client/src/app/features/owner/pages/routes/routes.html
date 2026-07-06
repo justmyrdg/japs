@@ -1,0 +1,194 @@
+<!-- Page header -->
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h2 class="text-xl font-semibold text-gray-800">Routes</h2>
+    <p class="text-sm text-gray-400 mt-0.5">Manage bus routes and distances</p>
+  </div>
+  <button
+    (click)="openAdd()"
+    class="flex items-center gap-2 bg-[#1E5AAA] hover:bg-[#174d93] text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors cursor-pointer"
+  >
+    <i class="pi pi-plus text-xs"></i> Add Route
+  </button>
+</div>
+
+<div class="bg-white rounded-lg shadow-sm overflow-hidden">
+  @if (loading()) {
+    <div class="flex items-center justify-center py-16 text-gray-400">
+      <i class="pi pi-spinner pi-spin text-2xl mr-3"></i> Loading routes...
+    </div>
+  } @else if (routes().length === 0) {
+    <div class="flex flex-col items-center justify-center py-16 text-gray-400">
+      <i class="pi pi-map text-4xl mb-3"></i>
+      <p class="text-sm">No routes configured yet.</p>
+    </div>
+  } @else {
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 border-b border-gray-200">
+        <tr>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Origin
+          </th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Destination
+          </th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Distance (km)
+          </th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Actions
+          </th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        @for (route of routes(); track route.id) {
+          <tr class="hover:bg-gray-50 transition-colors">
+            <td class="px-5 py-3 font-medium text-gray-800">{{ route.origin }}</td>
+            <td class="px-5 py-3 text-gray-600">{{ route.destination }}</td>
+            <td class="px-5 py-3 text-gray-600">{{ route.distance_km ?? '—' }}</td>
+            <td class="px-5 py-3">
+              <div class="flex items-center gap-1">
+                <button
+                  (click)="openEdit(route)"
+                  class="p-1.5 text-gray-400 hover:text-[#1E5AAA] hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                  title="Edit"
+                >
+                  <i class="pi pi-pencil text-sm"></i>
+                </button>
+                <button
+                  (click)="confirmDelete(route)"
+                  class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                  title="Delete"
+                >
+                  <i class="pi pi-trash text-sm"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</div>
+
+<!-- Add/Edit Modal -->
+@if (showModal()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" (click)="closeModal()"></div>
+    <div class="alert-modal-card relative bg-white rounded-lg shadow-2xl w-full max-w-md">
+      <div class="flex items-center justify-between px-8 pt-8 pb-4">
+        <h3 class="text-lg font-semibold text-gray-900">
+          {{ editingRoute() ? 'Edit Route' : 'Add Route' }}
+        </h3>
+        <button (click)="closeModal()" class="text-gray-400 hover:text-gray-600 cursor-pointer">
+          <i class="pi pi-times"></i>
+        </button>
+      </div>
+
+      <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+        <div class="px-8 py-2 flex flex-col gap-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1"
+              >Origin <span class="text-red-500">*</span></label
+            >
+            <input
+              formControlName="origin"
+              type="text"
+              placeholder="e.g. Grand Terminal"
+              class="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 border-gray-300"
+              [class.border-red-400]="fieldError(form, 'origin')"
+            />
+            @if (fieldError(form, 'origin')) {
+              <p class="text-red-500 text-xs mt-0.5">Required</p>
+            }
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1"
+              >Destination <span class="text-red-500">*</span></label
+            >
+            <input
+              formControlName="destination"
+              type="text"
+              placeholder="e.g. Calamba Terminal"
+              class="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 border-gray-300"
+              [class.border-red-400]="fieldError(form, 'destination')"
+            />
+            @if (fieldError(form, 'destination')) {
+              <p class="text-red-500 text-xs mt-0.5">Required</p>
+            }
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Distance (km)</label>
+            <input
+              formControlName="distance_km"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="e.g. 24.5"
+              class="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 border-gray-300"
+            />
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-3 px-8 py-5 border-t border-gray-100 mt-4">
+          <button
+            type="button"
+            (click)="closeModal()"
+            class="px-5 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="px-5 py-2.5 rounded-lg text-sm font-semibold bg-[#1E5AAA] hover:bg-[#174d93] text-white transition-colors cursor-pointer"
+          >
+            {{ editingRoute() ? 'Save Changes' : 'Add Route' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}
+
+<!-- Delete Modal -->
+@if (showDeleteModal()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" (click)="cancelDelete()"></div>
+    <div
+      class="alert-modal-card relative bg-white rounded-lg shadow-2xl w-full max-w-sm p-8 text-center"
+    >
+      <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-red-100 mb-4">
+        <i class="pi pi-trash text-red-500 text-2xl"></i>
+      </div>
+      <h3 class="text-lg font-semibold text-gray-900 mb-2">Delete Route</h3>
+      <p class="text-gray-500 text-sm mb-6">
+        Remove <strong>{{ deletingRoute()?.origin }} → {{ deletingRoute()?.destination }}</strong
+        >? This cannot be undone.
+      </p>
+      <div class="flex gap-3">
+        <button
+          (click)="cancelDelete()"
+          class="flex-1 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+        >
+          Cancel
+        </button>
+        <button
+          (click)="deleteRoute()"
+          class="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+}
