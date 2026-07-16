@@ -10,10 +10,14 @@ const ROLE_REDIRECT = {
   driver: "/driver/dashboard",
 };
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict",
+  // Cross-site cookies (frontend and backend on different domains) require
+  // SameSite=None, which browsers only honor when Secure is also set.
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
   maxAge: 8 * 60 * 60 * 1000, // 8 hours
 };
 
