@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { AlertService } from '../../../../core/services/alert.service';
+import { PrinterSetupService } from '../../../../core/services/printer-setup.service';
 import { environment } from '../../../../../environments/environment';
 
 export interface Trip {
@@ -54,6 +55,7 @@ export interface PassengerCount {
 export class TicketingPage implements OnInit {
   private http = inject(HttpClient);
   private alertService = inject(AlertService);
+  private printerSetup = inject(PrinterSetupService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private fb = inject(FormBuilder);
@@ -239,7 +241,7 @@ export class TicketingPage implements OnInit {
       .subscribe({
         next: (res) => {
           this.isPrinting.set(false);
-          this.lastPrintedTicket.set({
+          const printed = {
             ticketNumber: res.ticket?.ticket_number,
             category: payload.category,
             distance: payload.distance,
@@ -247,8 +249,24 @@ export class TicketingPage implements OnInit {
             date: new Date(),
             route: this.selectedTrip()?.Route,
             bus: this.selectedTrip()?.BusModel,
-          });
+          };
+          this.lastPrintedTicket.set(printed);
           this.showPrintModal.set(true);
+
+          this.printerSetup.sendToPrinter(
+            this.printerSetup.buildReceiptText({
+              ticketNumber: printed.ticketNumber,
+              busNumber: printed.bus?.bus_number ?? '',
+              plateNumber: printed.bus?.plate_number ?? '',
+              origin: printed.route?.origin ?? '',
+              destination: printed.route?.destination ?? '',
+              category: printed.category,
+              distance: printed.distance,
+              fare: printed.fare,
+              date: printed.date,
+            }),
+          );
+
           this.alertService.success('Success', 'Ticket generated and sent to printing terminal.');
 
           // Refresh local trip info & counts
