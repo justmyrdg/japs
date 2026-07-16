@@ -1,6 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { AlertService } from '../../../../core/services/alert.service';
 import { environment } from '../../../../../environments/environment';
@@ -38,26 +38,32 @@ export interface ScheduleRoute {
   destination: string;
 }
 
+// A single trip row in the multi-trip builder
+export interface TripRow {
+  route_id: number | null;
+  departure_time: string; // datetime-local string
+}
+
 @Component({
   selector: 'app-schedules',
-  imports: [ReactiveFormsModule, DatePipe],
+  imports: [FormsModule, DatePipe],
   templateUrl: './schedules.html',
   styleUrl: './schedules.css',
 })
 export class Schedules implements OnInit {
   private http = inject(HttpClient);
-  private fb = inject(FormBuilder);
   private alertService = inject(AlertService);
 
   private readonly BUSES_API = `${environment.apiUrl}/api/buses`;
 
   private allTrips = signal<ScheduleTrip[]>([]);
   loading = signal(false);
+  saving = signal(false);
   buses = signal<ScheduleBus[]>([]);
   routes = signal<ScheduleRoute[]>([]);
 
   startDate = signal<string>(this.tomorrow());
-  endDate   = signal<string>(this.tomorrow());
+  endDate = signal<string>(this.tomorrow());
 
   filterBus = signal('');
   filterDriver = signal('');
@@ -89,22 +95,23 @@ export class Schedules implements OnInit {
     const seen = new Set<number>();
     return this.allTrips()
       .filter((t) => t.conductor && !seen.has(t.conductor_id) && !!seen.add(t.conductor_id))
-      .map((t) => ({ id: t.conductor_id, name: `${t.conductor!.first_name} ${t.conductor!.last_name}` }));
+      .map((t) => ({
+        id: t.conductor_id,
+        name: `${t.conductor!.first_name} ${t.conductor!.last_name}`,
+      }));
   });
 
+  // ── Modal state ──
   showModal = signal(false);
   selectedBus = signal<ScheduleBus | null>(null);
+  scheduleDate = signal<string>(this.tomorrow());
+
+  // The list of trip rows being built
+  tripRows = signal<TripRow[]>([]);
+
+  // Delete confirm
   deletingTrip = signal<ScheduleTrip | null>(null);
   showDeleteModal = signal(false);
-
-  form: FormGroup = this.fb.group({
-    bus_id: [null, Validators.required],
-    route_id: [null, Validators.required],
-    driver_id: [null, Validators.required],
-    conductor_id: [null, Validators.required],
-    trip_number: ['', [Validators.required, Validators.min(1)]],
-    departure_time: ['', Validators.required],
-  });
 
   private tomorrow(): string {
     const d = new Date();
@@ -114,7 +121,11 @@ export class Schedules implements OnInit {
 
   get dateLabel(): string {
     const fmt = (s: string) =>
-      new Date(s + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+      new Date(s + 'T00:00:00').toLocaleDateString('en-PH', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
     if (this.startDate() === this.endDate()) return fmt(this.startDate());
     return `${fmt(this.startDate())} — ${fmt(this.endDate())}`;
   }
@@ -133,7 +144,10 @@ export class Schedules implements OnInit {
     this.filterRoute.set('');
     const url = `${this.BUSES_API}/trips?startDate=${this.startDate()}&endDate=${this.endDate()}`;
     this.http.get<ScheduleTrip[]>(url, { withCredentials: true }).subscribe({
-      next: (data) => { this.allTrips.set(data); this.loading.set(false); },
+      next: (data) => {
+        this.allTrips.set(data);
+        this.loading.set(false);
+      },
       error: () => this.loading.set(false),
     });
   }
@@ -141,7 +155,6 @@ export class Schedules implements OnInit {
   onStartDateChange(e: Event): void {
     const v = (e.target as HTMLInputElement).value;
     this.startDate.set(v);
-    // If end is before new start, clamp it
     if (this.endDate() < v) this.endDate.set(v);
     this.loadTrips();
   }
@@ -149,7 +162,6 @@ export class Schedules implements OnInit {
   onEndDateChange(e: Event): void {
     const v = (e.target as HTMLInputElement).value;
     this.endDate.set(v);
-    // If start is after new end, clamp it
     if (this.startDate() > v) this.startDate.set(v);
     this.loadTrips();
   }
@@ -161,54 +173,151 @@ export class Schedules implements OnInit {
   }
 
   loadRoutes(): void {
-    this.http.get<ScheduleRoute[]>(`${this.BUSES_API}/routes`, { withCredentials: true }).subscribe({
-      next: (data) => this.routes.set(data),
-    });
+    this.http
+      .get<ScheduleRoute[]>(`${this.BUSES_API}/routes`, { withCredentials: true })
+      .subscribe({
+        next: (data) => this.routes.set(data),
+      });
   }
 
-  onBusChange(e: Event): void {
-    const id = Number((e.target as HTMLSelectElement).value);
-    const bus = this.buses().find((b) => b.id === id) ?? null;
-    this.selectedBus.set(bus);
-    this.form.patchValue({
-      bus_id: bus?.id ?? null,
-      driver_id: bus?.driver_id ?? null,
-      conductor_id: bus?.conductor_id ?? null,
-      route_id: bus?.route_id ?? null,
-    });
-  }
-
+  // ── Modal ──
   openAdd(): void {
-    this.form.reset();
     this.selectedBus.set(null);
-    this.form.patchValue({ departure_time: `${this.startDate()}T06:00` });
+    this.scheduleDate.set(this.startDate());
+    this.tripRows.set([this.newRow()]);
     this.showModal.set(true);
   }
 
-  closeModal(): void { this.showModal.set(false); }
+  closeModal(): void {
+    this.showModal.set(false);
+  }
 
-  save(): void {
-    if (this.form.invalid) { this.form.markAllAsTouched(); return; }
-    this.http.post<ScheduleTrip>(`${this.BUSES_API}/trips`, this.form.value, { withCredentials: true }).subscribe({
-      next: () => { this.alertService.success('Saved', 'Trip scheduled.'); this.closeModal(); this.loadTrips(); },
-      error: (err) => this.alertService.error('Error', err.error?.message ?? 'Could not create trip.'),
+  onModalBusChange(e: Event): void {
+    const id = Number((e.target as HTMLSelectElement).value);
+    const bus = this.buses().find((b) => b.id === id) ?? null;
+    this.selectedBus.set(bus);
+    // Pre-fill route on existing rows if bus has a default route
+    if (bus?.route_id) {
+      this.tripRows.update((rows) =>
+        rows.map((r) => ({ ...r, route_id: r.route_id ?? bus.route_id! })),
+      );
+    }
+  }
+
+  onScheduleDateChange(e: Event): void {
+    const v = (e.target as HTMLInputElement).value;
+    this.scheduleDate.set(v);
+    // Update departure_time date part for all rows while keeping existing times
+    this.tripRows.update((rows) =>
+      rows.map((r) => {
+        const time = r.departure_time ? r.departure_time.split('T')[1] : '06:00';
+        return { ...r, departure_time: `${v}T${time}` };
+      }),
+    );
+  }
+
+  private newRow(): TripRow {
+    const bus = this.selectedBus();
+    return {
+      route_id: bus?.route_id ?? null,
+      departure_time: `${this.scheduleDate()}T06:00`,
+    };
+  }
+
+  addRow(): void {
+    this.tripRows.update((rows) => {
+      // Default departure = last row's time + 1 hour
+      const last = rows[rows.length - 1];
+      let nextTime = `${this.scheduleDate()}T06:00`;
+      if (last?.departure_time) {
+        const d = new Date(last.departure_time);
+        d.setHours(d.getHours() + 1);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        nextTime = `${this.scheduleDate()}T${hh}:${mm}`;
+      }
+      return [...rows, { route_id: last?.route_id ?? null, departure_time: nextTime }];
     });
   }
 
-  confirmDelete(trip: ScheduleTrip): void { this.deletingTrip.set(trip); this.showDeleteModal.set(true); }
-  cancelDelete(): void { this.showDeleteModal.set(false); }
+  removeRow(index: number): void {
+    this.tripRows.update((rows) => rows.filter((_, i) => i !== index));
+  }
+
+  updateRowRoute(index: number, e: Event): void {
+    const id = Number((e.target as HTMLSelectElement).value) || null;
+    this.tripRows.update((rows) => rows.map((r, i) => (i === index ? { ...r, route_id: id } : r)));
+  }
+
+  updateRowTime(index: number, e: Event): void {
+    const val = (e.target as HTMLInputElement).value;
+    this.tripRows.update((rows) =>
+      rows.map((r, i) => (i === index ? { ...r, departure_time: val } : r)),
+    );
+  }
+
+  canSave(): boolean {
+    const bus = this.selectedBus();
+    if (!bus?.driver_id || !bus?.conductor_id) return false;
+    if (this.tripRows().length === 0) return false;
+    return this.tripRows().every((r) => !!r.route_id && !!r.departure_time);
+  }
+
+  save(): void {
+    if (!this.canSave()) return;
+    const bus = this.selectedBus()!;
+    this.saving.set(true);
+    const payload = {
+      bus_id: bus.id,
+      driver_id: bus.driver_id,
+      conductor_id: bus.conductor_id,
+      date: this.scheduleDate(),
+      trips: this.tripRows().map((r) => ({
+        route_id: r.route_id,
+        departure_time: r.departure_time,
+      })),
+    };
+    this.http.post(`${this.BUSES_API}/trips/bulk`, payload, { withCredentials: true }).subscribe({
+      next: (res: any) => {
+        const count = Array.isArray(res) ? res.length : 1;
+        this.alertService.success('Scheduled', `${count} trip${count !== 1 ? 's' : ''} scheduled.`);
+        this.saving.set(false);
+        this.closeModal();
+        this.loadTrips();
+      },
+      error: (err) => {
+        this.saving.set(false);
+        this.alertService.error('Error', err.error?.message ?? 'Could not schedule trips.');
+      },
+    });
+  }
+
+  // ── Delete ──
+  confirmDelete(trip: ScheduleTrip): void {
+    this.deletingTrip.set(trip);
+    this.showDeleteModal.set(true);
+  }
+  cancelDelete(): void {
+    this.showDeleteModal.set(false);
+  }
 
   deleteTrip(): void {
     const trip = this.deletingTrip();
     if (!trip) return;
     this.http.delete(`${this.BUSES_API}/trips/${trip.id}`, { withCredentials: true }).subscribe({
-      next: () => { this.alertService.success('Deleted', 'Trip removed.'); this.showDeleteModal.set(false); this.loadTrips(); },
-      error: (err) => this.alertService.error('Error', err.error?.message ?? 'Could not delete trip.'),
+      next: () => {
+        this.alertService.success('Deleted', 'Trip removed.');
+        this.showDeleteModal.set(false);
+        this.loadTrips();
+      },
+      error: (err) =>
+        this.alertService.error('Error', err.error?.message ?? 'Could not delete trip.'),
     });
   }
 
-  fieldError(field: string): boolean {
-    const c = this.form.get(field);
-    return !!(c?.invalid && c?.touched);
+  routeLabel(routeId: number | null): string {
+    if (!routeId) return '—';
+    const r = this.routes().find((x) => x.id === routeId);
+    return r ? `${r.origin} → ${r.destination}` : '—';
   }
 }

@@ -20,11 +20,26 @@ interface Remittance {
   cash_deposit: number;
   total_less: number;
   net_collection: number;
+  driver_officer_share: number;
+  conductor_officer_share: number;
+  teller_remarks: string | null;
   status: 'submitted' | 'approved' | 'rejected' | 'finalized';
   submitted_at: string;
-  driver: { id: number; first_name: string; last_name: string };
+  approved_at: string | null;
+  conductor: { id: number; first_name: string; last_name: string; employee_id: string };
+  driver: { id: number; first_name: string; last_name: string; employee_id: string };
   BusModel: { id: number; bus_number: string; plate_number: string };
-  RemittanceExpenses?: { id: number; expense_type: string; amount: number }[];
+  approver: { id: number; first_name: string; last_name: string } | null;
+  RemittanceExpenses: { id: number; expense_type: string; amount: number }[];
+  Trips: {
+    id: number;
+    trip_number: number;
+    departure_time: string;
+    grand_total: number;
+    ticket_number_start: string | null;
+    ticket_number_end: string | null;
+    Route: { origin: string; destination: string } | null;
+  }[];
 }
 
 interface Trip {
@@ -242,6 +257,22 @@ export class ConductorRemittancesPage implements OnInit {
         } as any
       )[status] ?? 'bg-gray-100 text-gray-800'
     );
+  }
+
+  formatExpenseType(type: string): string {
+    const labels: Record<string, string> = {
+      officer: 'Officer / Police',
+      toll_fees: 'Toll Fees',
+      parking: 'Parking',
+      ppa: 'PPA (Port Authority)',
+      washing: 'Bus Washing',
+      diesel: 'Diesel / Fuel',
+      caller_grand_terminal: 'Caller (Grand Terminal)',
+      caller_calamba_terminal: 'Caller (Calamba Terminal)',
+      pwd: 'PWD / Senior Discount',
+      miscellaneous: 'Miscellaneous',
+    };
+    return labels[type] ?? type;
   }
 
   // ── Submit methods ──

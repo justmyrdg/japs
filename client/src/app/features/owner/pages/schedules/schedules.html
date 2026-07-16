@@ -8,11 +8,11 @@
     (click)="openAdd()"
     class="flex items-center gap-2 bg-[#1E5AAA] hover:bg-[#174d93] text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors cursor-pointer"
   >
-    <i class="pi pi-plus text-xs"></i> Schedule Trip
+    <i class="pi pi-plus text-xs"></i> Schedule Trips
   </button>
 </div>
 
-<!-- Date range picker bar -->
+<!-- Date range picker -->
 <div class="bg-white rounded-lg shadow-sm px-5 py-3 mb-4 flex items-center gap-3 flex-wrap">
   <i class="pi pi-calendar text-[#1E5AAA]"></i>
   <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">From</span>
@@ -37,50 +37,46 @@
 <div class="bg-white rounded-lg shadow-sm px-5 py-3 mb-4 flex flex-wrap items-center gap-3">
   <select
     (change)="filterBus.set($any($event.target).value)"
-    class="text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 bg-white text-gray-600"
+    class="text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#1E5AAA] bg-white text-gray-600"
   >
     <option value="">All Buses</option>
     @for (b of buses(); track b.id) {
       <option [value]="b.id">{{ b.bus_number }}</option>
     }
   </select>
-
   <select
     (change)="filterRoute.set($any($event.target).value)"
-    class="text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 bg-white text-gray-600"
+    class="text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#1E5AAA] bg-white text-gray-600"
   >
     <option value="">All Routes</option>
     @for (r of routes(); track r.id) {
       <option [value]="r.id">{{ r.origin }} → {{ r.destination }}</option>
     }
   </select>
-
   <select
     (change)="filterDriver.set($any($event.target).value)"
-    class="text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 bg-white text-gray-600"
+    class="text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#1E5AAA] bg-white text-gray-600"
   >
     <option value="">All Drivers</option>
     @for (d of tripDrivers(); track d.id) {
       <option [value]="d.id">{{ d.name }}</option>
     }
   </select>
-
   <select
     (change)="filterConductor.set($any($event.target).value)"
-    class="text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 bg-white text-gray-600"
+    class="text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#1E5AAA] bg-white text-gray-600"
   >
     <option value="">All Conductors</option>
     @for (c of tripConductors(); track c.id) {
       <option [value]="c.id">{{ c.name }}</option>
     }
   </select>
-
   <span class="text-xs text-gray-400 ml-auto">
     {{ filtered().length }} trip{{ filtered().length !== 1 ? 's' : '' }}
   </span>
 </div>
 
-<!-- Table -->
+<!-- Schedule table -->
 <div class="bg-white rounded-lg shadow-sm overflow-hidden">
   @if (loading()) {
     <div class="flex items-center justify-center py-16 text-gray-400">
@@ -95,14 +91,46 @@
     <table class="w-full text-sm">
       <thead class="bg-gray-50 border-b border-gray-200">
         <tr>
-          <th class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Trip #</th>
-          <th class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Bus</th>
-          <th class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Route</th>
-          <th class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Driver</th>
-          <th class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Conductor</th>
-          <th class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Departure</th>
-          <th class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-          <th class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Trip #
+          </th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Bus
+          </th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Route
+          </th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Driver
+          </th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Conductor
+          </th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Departure
+          </th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Status
+          </th>
+          <th
+            class="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          >
+            Actions
+          </th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-100">
@@ -113,27 +141,60 @@
               @if (trip.BusModel) {
                 {{ trip.BusModel.bus_number }}
                 <span class="text-gray-400 text-xs">({{ trip.BusModel.plate_number }})</span>
-              } @else { — }
-            </td>
-            <td class="px-5 py-3 text-gray-600">
-              @if (trip.Route) { {{ trip.Route.origin }} → {{ trip.Route.destination }} } @else { — }
-            </td>
-            <td class="px-5 py-3 text-gray-600">
-              @if (trip.driver) { {{ trip.driver.first_name }} {{ trip.driver.last_name }} } @else { — }
-            </td>
-            <td class="px-5 py-3 text-gray-600">
-              @if (trip.conductor) { {{ trip.conductor.first_name }} {{ trip.conductor.last_name }} } @else { — }
-            </td>
-            <td class="px-5 py-3 text-gray-600">{{ trip.departure_time | date: 'h:mm a' }}</td>
-            <td class="px-5 py-3">
-              @if (trip.status === 'scheduled') {
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">Scheduled</span>
-              } @else if (trip.status === 'ongoing') {
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700">Ongoing</span>
-              } @else if (trip.status === 'completed') {
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">Completed</span>
               } @else {
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600">Cancelled</span>
+                —
+              }
+            </td>
+            <td class="px-5 py-3 text-gray-600">
+              @if (trip.Route) {
+                {{ trip.Route.origin }} → {{ trip.Route.destination }}
+              } @else {
+                —
+              }
+            </td>
+            <td class="px-5 py-3 text-gray-600">
+              @if (trip.driver) {
+                {{ trip.driver.first_name }} {{ trip.driver.last_name }}
+              } @else {
+                —
+              }
+            </td>
+            <td class="px-5 py-3 text-gray-600">
+              @if (trip.conductor) {
+                {{ trip.conductor.first_name }} {{ trip.conductor.last_name }}
+              } @else {
+                —
+              }
+            </td>
+            <td class="px-5 py-3 text-gray-600">
+              {{ trip.departure_time | date: 'MMM d · h:mm a' }}
+            </td>
+            <td class="px-5 py-3">
+              @switch (trip.status) {
+                @case ('scheduled') {
+                  <span
+                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700"
+                    >Scheduled</span
+                  >
+                }
+                @case ('ongoing') {
+                  <span
+                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700"
+                    >Ongoing</span
+                  >
+                }
+                @case ('completed') {
+                  <span
+                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700"
+                    >Completed</span
+                  >
+                }
+                @default {
+                  <span
+                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600"
+                    >Cancelled</span
+                  >
+                }
               }
             </td>
             <td class="px-5 py-3">
@@ -152,130 +213,202 @@
   }
 </div>
 
-<!-- Schedule Trip Modal -->
+<!-- ═══ Schedule Trips Modal ═══ -->
 @if (showModal()) {
   <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
     <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" (click)="closeModal()"></div>
-    <div class="alert-modal-card relative bg-white rounded-lg shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
-      <div class="flex items-center justify-between px-8 pt-8 pb-4 shrink-0">
+    <div
+      class="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]"
+    >
+      <!-- Modal header -->
+      <div
+        class="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 shrink-0"
+      >
         <div>
-          <h3 class="text-lg font-semibold text-gray-900">Schedule Trip</h3>
-          <p class="text-xs text-gray-400 mt-0.5">{{ dateLabel }}</p>
+          <h3 class="text-lg font-semibold text-gray-900">Schedule Trips</h3>
+          <p class="text-xs text-gray-400 mt-0.5">
+            Assign one or more trips to a bus for a given day
+          </p>
         </div>
-        <button (click)="closeModal()" class="text-gray-400 hover:text-gray-600 cursor-pointer">
+        <button (click)="closeModal()" class="text-gray-400 hover:text-gray-600 cursor-pointer p-1">
           <i class="pi pi-times"></i>
         </button>
       </div>
 
-      <form [formGroup]="form" (ngSubmit)="save()" novalidate class="flex flex-col flex-1 min-h-0">
-        <div class="flex-1 overflow-y-auto px-8 py-2 flex flex-col gap-4">
-
-          <!-- Bus selector -->
+      <!-- Scrollable body -->
+      <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        <!-- Step 1: Bus + Date -->
+        <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">Bus <span class="text-red-500">*</span></label>
+            <label class="block text-xs font-medium text-gray-600 mb-1"
+              >Bus <span class="text-red-500">*</span></label
+            >
             <select
-              (change)="onBusChange($event)"
-              class="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 border-gray-300 bg-white"
-              [class.border-red-400]="fieldError('bus_id')"
+              (change)="onModalBusChange($event)"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 bg-white"
             >
               <option value="">— Select Bus —</option>
               @for (b of buses(); track b.id) {
-                <option [value]="b.id">{{ b.bus_number }} ({{ b.plate_number }})</option>
+                <option [value]="b.id">Bus {{ b.bus_number }} ({{ b.plate_number }})</option>
               }
             </select>
-            @if (fieldError('bus_id')) { <p class="text-red-500 text-xs mt-0.5">Required</p> }
           </div>
-
-          <!-- Auto-filled info from bus -->
-          @if (selectedBus()) {
-            <div class="bg-gray-50 rounded-lg px-4 py-3 flex flex-col gap-2 text-sm">
-              <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Auto-filled from bus</p>
-              <div class="flex items-center gap-2">
-                <i class="pi pi-user text-gray-400 text-xs w-4"></i>
-                <span class="text-gray-500 text-xs w-20 shrink-0">Driver</span>
-                @if (selectedBus()!.assignedDriver) {
-                  <span class="font-medium text-gray-800">{{ selectedBus()!.assignedDriver!.first_name }} {{ selectedBus()!.assignedDriver!.last_name }}</span>
-                } @else {
-                  <span class="text-red-500 text-xs">No driver assigned</span>
-                }
-              </div>
-              <div class="flex items-center gap-2">
-                <i class="pi pi-user text-gray-400 text-xs w-4"></i>
-                <span class="text-gray-500 text-xs w-20 shrink-0">Conductor</span>
-                @if (selectedBus()!.assignedConductor) {
-                  <span class="font-medium text-gray-800">{{ selectedBus()!.assignedConductor!.first_name }} {{ selectedBus()!.assignedConductor!.last_name }}</span>
-                } @else {
-                  <span class="text-red-500 text-xs">No conductor assigned</span>
-                }
-              </div>
-              <div class="flex items-center gap-2">
-                <i class="pi pi-map text-gray-400 text-xs w-4"></i>
-                <span class="text-gray-500 text-xs w-20 shrink-0">Route</span>
-                @if (selectedBus()!.defaultRoute) {
-                  <span class="font-medium text-gray-800">{{ selectedBus()!.defaultRoute!.origin }} → {{ selectedBus()!.defaultRoute!.destination }}</span>
-                } @else {
-                  <span class="text-amber-500 text-xs">No default route</span>
-                }
-              </div>
-            </div>
-          }
-
-          <!-- Route -->
           <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">
-              Route <span class="text-red-500">*</span>
-              @if (selectedBus() && selectedBus()!.route_id) {
-                <span class="ml-1 text-[10px] font-medium text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">Pre-filled from bus</span>
-              }
-            </label>
-            <select
-              formControlName="route_id"
-              class="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 border-gray-300 bg-white"
-              [class.border-red-400]="fieldError('route_id')"
+            <label class="block text-xs font-medium text-gray-600 mb-1"
+              >Schedule Date <span class="text-red-500">*</span></label
             >
-              <option [ngValue]="null">— Select Route —</option>
-              @for (r of routes(); track r.id) {
-                <option [ngValue]="r.id">{{ r.origin }} → {{ r.destination }}</option>
+            <input
+              type="date"
+              [value]="scheduleDate()"
+              (change)="onScheduleDateChange($event)"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20"
+            />
+          </div>
+        </div>
+
+        <!-- Bus crew preview -->
+        @if (selectedBus()) {
+          <div class="bg-gray-50 rounded-lg px-4 py-3 grid grid-cols-2 gap-3 text-sm">
+            <div class="flex items-center gap-2">
+              <i class="pi pi-user text-gray-400 text-xs"></i>
+              <span class="text-gray-500 text-xs w-20 shrink-0">Driver</span>
+              @if (selectedBus()!.assignedDriver) {
+                <span class="font-medium text-gray-800"
+                  >{{ selectedBus()!.assignedDriver!.first_name }}
+                  {{ selectedBus()!.assignedDriver!.last_name }}</span
+                >
+              } @else {
+                <span class="text-red-500 text-xs">No driver assigned</span>
               }
-            </select>
-            @if (selectedBus() && !selectedBus()!.route_id) {
-              <p class="text-amber-500 text-xs mt-0.5"><i class="pi pi-exclamation-triangle text-xs mr-1"></i>No default route set for this bus.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <i class="pi pi-user text-gray-400 text-xs"></i>
+              <span class="text-gray-500 text-xs w-20 shrink-0">Conductor</span>
+              @if (selectedBus()!.assignedConductor) {
+                <span class="font-medium text-gray-800"
+                  >{{ selectedBus()!.assignedConductor!.first_name }}
+                  {{ selectedBus()!.assignedConductor!.last_name }}</span
+                >
+              } @else {
+                <span class="text-red-500 text-xs">No conductor assigned</span>
+              }
+            </div>
+          </div>
+
+          @if (!selectedBus()!.driver_id || !selectedBus()!.conductor_id) {
+            <p class="text-xs text-red-500 -mt-2">
+              <i class="pi pi-exclamation-triangle mr-1"></i>
+              Assign a driver and conductor to this bus before scheduling trips.
+            </p>
+          }
+        }
+
+        <!-- Trip rows -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Trips
+              <span
+                class="ml-1.5 text-[10px] font-medium bg-[#1E5AAA]/10 text-[#1E5AAA] px-1.5 py-0.5 rounded-full"
+              >
+                Trip numbers auto-assigned
+              </span>
+            </p>
+            <button
+              type="button"
+              (click)="addRow()"
+              class="flex items-center gap-1 text-xs font-semibold text-[#1E5AAA] hover:text-[#174d93] cursor-pointer"
+            >
+              <i class="pi pi-plus text-[10px]"></i> Add Trip
+            </button>
+          </div>
+
+          <!-- Column headers -->
+          <div class="grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 px-1 mb-1">
+            <span class="text-[10px] font-semibold text-gray-400 uppercase">#</span>
+            <span class="text-[10px] font-semibold text-gray-400 uppercase">Route</span>
+            <span class="text-[10px] font-semibold text-gray-400 uppercase">Departure Time</span>
+            <span></span>
+          </div>
+
+          <div class="space-y-2">
+            @for (row of tripRows(); track $index) {
+              <div class="grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 items-center">
+                <!-- Trip number preview -->
+                <span class="text-xs font-bold text-gray-400 text-center">{{ $index + 1 }}</span>
+
+                <!-- Route selector -->
+                <select
+                  [value]="row.route_id ?? ''"
+                  (change)="updateRowRoute($index, $event)"
+                  class="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 bg-white"
+                  [class.border-red-400]="!row.route_id"
+                >
+                  <option value="">— Route —</option>
+                  @for (r of routes(); track r.id) {
+                    <option [value]="r.id">{{ r.origin }} → {{ r.destination }}</option>
+                  }
+                </select>
+
+                <!-- Departure time -->
+                <input
+                  type="datetime-local"
+                  [value]="row.departure_time"
+                  (change)="updateRowTime($index, $event)"
+                  class="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20"
+                  [class.border-red-400]="!row.departure_time"
+                />
+
+                <!-- Remove row -->
+                @if (tripRows().length > 1) {
+                  <button
+                    type="button"
+                    (click)="removeRow($index)"
+                    class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <i class="pi pi-trash text-xs"></i>
+                  </button>
+                } @else {
+                  <span></span>
+                }
+              </div>
             }
-            @if (fieldError('route_id')) { <p class="text-red-500 text-xs mt-0.5">Required</p> }
           </div>
 
-          <!-- Trip number -->
-          <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">Trip Number <span class="text-red-500">*</span></label>
-            <input
-              formControlName="trip_number"
-              type="number"
-              min="1"
-              placeholder="e.g. 1"
-              class="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 border-gray-300"
-              [class.border-red-400]="fieldError('trip_number')"
-            />
-            @if (fieldError('trip_number')) { <p class="text-red-500 text-xs mt-0.5">Required</p> }
-          </div>
-
-          <!-- Departure time -->
-          <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">Departure Time <span class="text-red-500">*</span></label>
-            <input
-              formControlName="departure_time"
-              type="datetime-local"
-              class="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 border-gray-300"
-              [class.border-red-400]="fieldError('departure_time')"
-            />
-            @if (fieldError('departure_time')) { <p class="text-red-500 text-xs mt-0.5">Required</p> }
-          </div>
+          @if (tripRows().length === 0) {
+            <p class="text-sm text-gray-400 text-center py-4">No trips added yet.</p>
+          }
         </div>
+      </div>
 
-        <div class="flex justify-end gap-3 px-8 py-5 border-t border-gray-100 shrink-0">
-          <button type="button" (click)="closeModal()" class="px-5 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer">Cancel</button>
-          <button type="submit" class="px-5 py-2.5 rounded-lg text-sm font-semibold bg-[#1E5AAA] hover:bg-[#174d93] text-white transition-colors cursor-pointer">Schedule Trip</button>
+      <!-- Footer -->
+      <div class="flex items-center justify-between px-6 py-4 border-t border-gray-100 shrink-0">
+        <span class="text-xs text-gray-400">
+          {{ tripRows().length }} trip{{ tripRows().length !== 1 ? 's' : '' }} to schedule
+        </span>
+        <div class="flex gap-3">
+          <button
+            type="button"
+            (click)="closeModal()"
+            class="px-5 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            (click)="save()"
+            [disabled]="!canSave() || saving()"
+            class="px-5 py-2.5 rounded-lg text-sm font-semibold bg-[#1E5AAA] hover:bg-[#174d93] text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            @if (saving()) {
+              <i class="pi pi-spinner pi-spin text-xs"></i>
+            } @else {
+              <i class="pi pi-check text-xs"></i>
+            }
+            {{ saving() ? 'Saving…' : 'Schedule Trips' }}
+          </button>
         </div>
-      </form>
+      </div>
     </div>
   </div>
 }
@@ -284,17 +417,28 @@
 @if (showDeleteModal()) {
   <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
     <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" (click)="cancelDelete()"></div>
-    <div class="alert-modal-card relative bg-white rounded-lg shadow-2xl w-full max-w-sm p-8 text-center">
+    <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-sm p-8 text-center">
       <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-red-100 mb-4">
         <i class="pi pi-trash text-red-500 text-2xl"></i>
       </div>
       <h3 class="text-lg font-semibold text-gray-900 mb-2">Remove Trip</h3>
       <p class="text-gray-500 text-sm mb-6">
-        Remove trip <strong>#{{ deletingTrip()?.trip_number }}</strong> from the schedule? This cannot be undone.
+        Remove trip <strong>#{{ deletingTrip()?.trip_number }}</strong> from the schedule? This
+        cannot be undone.
       </p>
       <div class="flex gap-3">
-        <button (click)="cancelDelete()" class="flex-1 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer">Cancel</button>
-        <button (click)="deleteTrip()" class="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer">Remove</button>
+        <button
+          (click)="cancelDelete()"
+          class="flex-1 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+        >
+          Cancel
+        </button>
+        <button
+          (click)="deleteTrip()"
+          class="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
+        >
+          Remove
+        </button>
       </div>
     </div>
   </div>

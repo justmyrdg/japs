@@ -7,6 +7,7 @@ const {
   getConductors,
   getTrips,
   createRemittance,
+  updateRemittance,
   approveRemittance,
   rejectRemittance,
 } = require("../controllers/auditTellerController");
@@ -26,6 +27,7 @@ router.get("/drivers", getDrivers);
 router.get("/conductors", getConductors);
 router.get("/trips", getTrips);
 router.post("/remittances", createRemittance);
+router.put("/remittances/:id", updateRemittance);
 router.put("/remittances/:id/approve", approveRemittance);
 router.put("/remittances/:id/reject", rejectRemittance);
 

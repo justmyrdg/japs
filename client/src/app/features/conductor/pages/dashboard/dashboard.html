@@ -197,23 +197,31 @@
           </div>
 
           <!-- Actions -->
-          <div class="px-4 py-3 bg-gray-50 border-t border-gray-100 flex gap-2">
+          <div class="px-4 py-3 bg-gray-50 border-t border-gray-100 flex flex-col gap-2">
             @if (trip.status === 'scheduled') {
-              <button
-                (click)="updateStatus(trip.id, 'ongoing')"
-                [disabled]="updatingId() === trip.id"
-                class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
-              >
-                <i class="pi pi-play-circle"></i> Start
-              </button>
-              <button
-                (click)="updateStatus(trip.id, 'cancelled')"
-                [disabled]="updatingId() === trip.id"
-                class="px-3 bg-white hover:bg-red-50 text-red-400 border border-red-200 font-medium py-2 rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-50"
-                title="Cancel"
-              >
-                <i class="pi pi-times"></i>
-              </button>
+              @if (!canStartTrip().get(trip.id)) {
+                <div class="flex items-center gap-1.5 text-[11px] text-gray-400 px-1">
+                  <i class="pi pi-lock text-xs"></i>
+                  Complete the previous trip before starting this one.
+                </div>
+              }
+              <div class="flex gap-2">
+                <button
+                  (click)="updateStatus(trip.id, 'ongoing')"
+                  [disabled]="updatingId() === trip.id || !canStartTrip().get(trip.id)"
+                  class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <i class="pi pi-play-circle"></i> Start
+                </button>
+                <button
+                  (click)="updateStatus(trip.id, 'cancelled')"
+                  [disabled]="updatingId() === trip.id"
+                  class="px-3 bg-white hover:bg-red-50 text-red-400 border border-red-200 font-medium py-2 rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-50"
+                  title="Cancel"
+                >
+                  <i class="pi pi-times"></i>
+                </button>
+              </div>
             } @else if (trip.status === 'ongoing') {
               <a
                 [routerLink]="['/conductor/ticketing']"
@@ -274,9 +282,15 @@
               @if (trip.status === 'scheduled') {
                 <button
                   (click)="updateStatus(trip.id, 'ongoing')"
-                  [disabled]="updatingId() === trip.id"
-                  class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold cursor-pointer disabled:opacity-50"
+                  [disabled]="updatingId() === trip.id || !canStartTrip().get(trip.id)"
+                  [title]="
+                    !canStartTrip().get(trip.id) ? 'Complete the previous trip first' : 'Start trip'
+                  "
+                  class="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
                 >
+                  @if (!canStartTrip().get(trip.id)) {
+                    <i class="pi pi-lock text-[10px]"></i>
+                  }
                   Start
                 </button>
               } @else if (trip.status === 'ongoing') {
@@ -403,10 +417,20 @@
                     @if (trip.status === 'scheduled') {
                       <button
                         (click)="updateStatus(trip.id, 'ongoing')"
-                        [disabled]="updatingId() === trip.id"
-                        class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded-lg font-semibold cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                        [disabled]="updatingId() === trip.id || !canStartTrip().get(trip.id)"
+                        [title]="
+                          !canStartTrip().get(trip.id)
+                            ? 'Complete the previous trip first'
+                            : 'Start trip'
+                        "
+                        class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded-lg font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
                       >
-                        <i class="pi pi-play-circle text-xs"></i> Start
+                        @if (!canStartTrip().get(trip.id)) {
+                          <i class="pi pi-lock text-[10px]"></i>
+                        } @else {
+                          <i class="pi pi-play-circle text-xs"></i>
+                        }
+                        Start
                       </button>
                       <button
                         (click)="updateStatus(trip.id, 'cancelled')"
