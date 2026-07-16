@@ -41,14 +41,6 @@ export const OWNER_ROUTES: Routes = [
         loadComponent: () => import('./pages/schedules/schedules').then((m) => m.Schedules),
       },
       {
-        path: 'reports',
-        loadComponent: () => import('./pages/reports/reports').then((m) => m.Reports),
-      },
-      {
-        path: 'forecasting',
-        loadComponent: () => import('./pages/forecasting/forecasting').then((m) => m.Forecasting),
-      },
-      {
         path: 'users',
         loadComponent: () => import('./pages/users/users').then((m) => m.Users),
       },

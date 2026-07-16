@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { DatePipe, CurrencyPipe } from '@angular/common';
 import { AlertService } from '../../../../core/services/alert.service';
 import { environment } from '../../../../../environments/environment';
+import { TablePagination } from '../../../../shared/components/table-pagination/table-pagination';
 
 export interface Trip {
   id: number;
@@ -32,7 +33,7 @@ type ViewMode = 'card' | 'table';
 
 @Component({
   selector: 'app-conductor-dashboard',
-  imports: [DatePipe, CurrencyPipe, RouterLink],
+  imports: [DatePipe, CurrencyPipe, RouterLink, TablePagination],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.css',
 })
@@ -48,6 +49,8 @@ export class ConductorDashboard implements OnInit {
   updatingId = signal<number | null>(null);
   activeTab = signal<TripTab>('today');
   viewMode = signal<ViewMode>('card');
+  search = signal('');
+  statusFilter = signal('');
   pageSize = signal(9);
   currentPage = signal(1);
   readonly PAGE_SIZES = [6, 9, 18, 36];
@@ -62,12 +65,32 @@ export class ConductorDashboard implements OnInit {
     }),
   );
 
-  // "All" tab = scheduled today + ongoing + completed/cancelled (history)
   allTrips = computed(() => this.trips());
 
-  filteredTrips = computed(() =>
+  // Tab-scoped list before search/filter
+  private tabTrips = computed(() =>
     this.activeTab() === 'today' ? this.todayTrips() : this.allTrips(),
   );
+
+  // Search + status filter applied on top of the active tab
+  filteredTrips = computed(() => {
+    const q = this.search().toLowerCase().trim();
+    const status = this.statusFilter();
+    return this.tabTrips().filter((t) => {
+      const matchSearch =
+        !q ||
+        String(t.trip_number).includes(q) ||
+        (t.Route?.origin ?? '').toLowerCase().includes(q) ||
+        (t.Route?.destination ?? '').toLowerCase().includes(q) ||
+        (t.BusModel?.bus_number ?? '').toLowerCase().includes(q) ||
+        (t.BusModel?.plate_number ?? '').toLowerCase().includes(q) ||
+        (t.driver
+          ? `${t.driver.first_name} ${t.driver.last_name}`.toLowerCase().includes(q)
+          : false);
+      const matchStatus = !status || t.status === status;
+      return matchSearch && matchStatus;
+    });
+  });
 
   // Pagination
   totalItems = computed(() => this.filteredTrips().length);
@@ -126,10 +149,12 @@ export class ConductorDashboard implements OnInit {
   });
 
   constructor() {
-    // Reset page on tab change
+    // Reset page on tab, search, or filter change
     effect(
       () => {
         this.activeTab();
+        this.search();
+        this.statusFilter();
         this.currentPage.set(1);
       },
       { allowSignalWrites: true },
@@ -188,5 +213,13 @@ export class ConductorDashboard implements OnInit {
   onPageSizeChange(size: number): void {
     this.pageSize.set(size);
     this.currentPage.set(1);
+  }
+
+  onSearch(e: Event): void {
+    this.search.set((e.target as HTMLInputElement).value);
+  }
+
+  onStatusFilter(e: Event): void {
+    this.statusFilter.set((e.target as HTMLSelectElement).value);
   }
 }

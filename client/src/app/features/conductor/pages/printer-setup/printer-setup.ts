@@ -12,14 +12,39 @@ export class PrinterSetupPage {
   private printerSetup = inject(PrinterSetupService);
   private router = inject(Router);
 
+  connecting = signal(false);
+  connectError = signal('');
+  printing = signal(false);
   showConfirmation = signal(false);
   showTroubleshooting = signal(false);
-  showMissingAppHint = signal(false);
-  private hintTimer: ReturnType<typeof setTimeout> | undefined;
 
-  sendTestPrint(): void {
+  isConnected(): boolean {
+    return this.printerSetup.isConnected();
+  }
+
+  deviceName(): string {
+    return this.printerSetup.deviceName();
+  }
+
+  isConfigured(): boolean {
+    return this.printerSetup.isConfigured();
+  }
+
+  async connectPrinter(): Promise<void> {
+    this.connectError.set('');
+    this.connecting.set(true);
+    try {
+      await this.printerSetup.connect();
+    } catch (err) {
+      this.connectError.set(err instanceof Error ? err.message : 'Failed to connect to printer.');
+    } finally {
+      this.connecting.set(false);
+    }
+  }
+
+  async sendTestPrint(): Promise<void> {
     this.showTroubleshooting.set(false);
-    this.showMissingAppHint.set(false);
+    this.printing.set(true);
 
     const sampleText = this.printerSetup.buildReceiptText({
       ticketNumber: 'TEST',
@@ -33,11 +58,14 @@ export class PrinterSetupPage {
       date: new Date(),
     });
 
-    this.printerSetup.sendToPrinter(sampleText);
-    this.showConfirmation.set(true);
-
-    clearTimeout(this.hintTimer);
-    this.hintTimer = setTimeout(() => this.showMissingAppHint.set(true), 4000);
+    try {
+      await this.printerSetup.sendToPrinter(sampleText);
+      this.showConfirmation.set(true);
+    } catch (err) {
+      this.connectError.set(err instanceof Error ? err.message : 'Failed to send test print.');
+    } finally {
+      this.printing.set(false);
+    }
   }
 
   confirmSuccess(): void {
@@ -49,10 +77,6 @@ export class PrinterSetupPage {
   confirmFailure(): void {
     this.showConfirmation.set(false);
     this.showTroubleshooting.set(true);
-  }
-
-  isConfigured(): boolean {
-    return this.printerSetup.isConfigured();
   }
 
   reconfigure(): void {

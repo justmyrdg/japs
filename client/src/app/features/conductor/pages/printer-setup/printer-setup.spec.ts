@@ -7,10 +7,16 @@ describe('PrinterSetupPage', () => {
   let component: PrinterSetupPage;
   let fixture: ComponentFixture<PrinterSetupPage>;
   let sendToPrinter: ReturnType<typeof vi.fn>;
+  let connect: ReturnType<typeof vi.fn>;
   let markConfigured: ReturnType<typeof vi.fn>;
+  let connected: boolean;
 
   beforeEach(async () => {
-    sendToPrinter = vi.fn();
+    connected = false;
+    sendToPrinter = vi.fn().mockResolvedValue(undefined);
+    connect = vi.fn().mockImplementation(async () => {
+      connected = true;
+    });
     markConfigured = vi.fn();
 
     await TestBed.configureTestingModule({
@@ -22,9 +28,12 @@ describe('PrinterSetupPage', () => {
           useValue: {
             buildReceiptText: () => 'SAMPLE RECEIPT',
             sendToPrinter,
+            connect,
             markConfigured,
             reset: vi.fn(),
             isConfigured: () => false,
+            isConnected: () => connected,
+            deviceName: () => 'Test Printer',
           },
         },
       ],
@@ -39,21 +48,27 @@ describe('PrinterSetupPage', () => {
     expect(component).toBeTruthy();
   });
 
-  it('sends a sample receipt when sendTestPrint is called', () => {
-    component.sendTestPrint();
+  it('connects to the printer when connectPrinter is called', async () => {
+    await component.connectPrinter();
+    expect(connect).toHaveBeenCalled();
+    expect(component.isConnected()).toBe(true);
+  });
+
+  it('sends a sample receipt when sendTestPrint is called', async () => {
+    await component.sendTestPrint();
     expect(sendToPrinter).toHaveBeenCalledWith('SAMPLE RECEIPT');
     expect(component.showConfirmation()).toBe(true);
   });
 
-  it('marks configured and clears confirmation on confirmSuccess', () => {
-    component.sendTestPrint();
+  it('marks configured and clears confirmation on confirmSuccess', async () => {
+    await component.sendTestPrint();
     component.confirmSuccess();
     expect(markConfigured).toHaveBeenCalled();
     expect(component.showConfirmation()).toBe(false);
   });
 
-  it('shows troubleshooting and clears confirmation on confirmFailure', () => {
-    component.sendTestPrint();
+  it('shows troubleshooting and clears confirmation on confirmFailure', async () => {
+    await component.sendTestPrint();
     component.confirmFailure();
     expect(markConfigured).not.toHaveBeenCalled();
     expect(component.showConfirmation()).toBe(false);

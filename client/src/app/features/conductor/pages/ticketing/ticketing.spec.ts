@@ -12,7 +12,7 @@ describe('TicketingPage', () => {
   let sendToPrinter: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    sendToPrinter = vi.fn();
+    sendToPrinter = vi.fn().mockResolvedValue(undefined);
 
     await TestBed.configureTestingModule({
       imports: [TicketingPage, HttpClientTestingModule],

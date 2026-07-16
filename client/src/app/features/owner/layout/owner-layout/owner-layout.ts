@@ -30,8 +30,6 @@ export class OwnerLayout {
     { label: 'Routes', icon: 'pi-map', route: 'routes' },
     { label: 'Fare Settings', icon: 'pi-money-bill', route: 'fare-settings' },
     { label: 'Schedules', icon: 'pi-calendar', route: 'schedules' },
-    { label: 'Reports', icon: 'pi-download', route: 'reports' },
-    { label: 'Forecasting', icon: 'pi-chart-line', route: 'forecasting' },
     { label: 'Users', icon: 'pi-users', route: 'users' },
   ];
 

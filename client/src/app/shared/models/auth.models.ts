@@ -14,5 +14,4 @@ export interface AuthUser {
 
 export interface LoginResponse {
   redirectUrl: string;
-  user: AuthUser;
 }

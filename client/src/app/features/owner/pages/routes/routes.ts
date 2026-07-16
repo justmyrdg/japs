@@ -1,8 +1,9 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AlertService } from '../../../../core/services/alert.service';
 import { environment } from '../../../../../environments/environment';
+import { TablePagination } from '../../../../shared/components/table-pagination/table-pagination';
 
 export interface AppRoute {
   id: number;
@@ -21,10 +22,12 @@ export interface FareRate {
 
 @Component({
   selector: 'app-routes',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, TablePagination],
   templateUrl: './routes.html',
   styleUrl: './routes.css',
 })
+
+
 export class Routes implements OnInit {
   private http = inject(HttpClient);
   private fb = inject(FormBuilder);
@@ -44,8 +47,42 @@ export class Routes implements OnInit {
   activeTab = signal<'routes' | 'fare-matrix'>('routes');
 
   // ── Routes ────────────────────────────────────────────────────────────
-  routes = signal<AppRoute[]>([]);
+  private allRoutes = signal<AppRoute[]>([]);
+  routes = computed(() => this.allRoutes());
   loading = signal(false);
+
+  // ── Table state ───────────────────────────────────────────────────────
+  search = signal('');
+  pageSize = signal(10);
+  currentPage = signal(1);
+  readonly PAGE_SIZES = [10, 25, 50];
+
+  // ── Derived ───────────────────────────────────────────────────────────
+  filtered = computed(() => {
+    const q = this.search().toLowerCase().trim();
+    return this.allRoutes().filter(
+      (r) => !q || r.origin.toLowerCase().includes(q) || r.destination.toLowerCase().includes(q),
+    );
+  });
+
+  totalItems = computed(() => this.filtered().length);
+  totalPages = computed(() => Math.max(1, Math.ceil(this.totalItems() / this.pageSize())));
+  pageStart = computed(() => (this.currentPage() - 1) * this.pageSize() + 1);
+  pageEnd = computed(() => Math.min(this.currentPage() * this.pageSize(), this.totalItems()));
+  paged = computed(() => {
+    const start = (this.currentPage() - 1) * this.pageSize();
+    return this.filtered().slice(start, start + this.pageSize());
+  });
+  pageNumbers = computed(() => {
+    const total = this.totalPages();
+    const cur = this.currentPage();
+    const pages: (number | '...')[] = [];
+    for (let i = 1; i <= total; i++) {
+      if (i === 1 || i === total || Math.abs(i - cur) <= 1) pages.push(i);
+      else if (pages[pages.length - 1] !== '...') pages.push('...');
+    }
+    return pages;
+  });
 
   showModal = signal(false);
   showDeleteModal = signal(false);
@@ -80,9 +117,25 @@ export class Routes implements OnInit {
   loadRoutes(): void {
     this.loading.set(true);
     this.http.get<AppRoute[]>(this.API, { withCredentials: true }).subscribe({
-      next: (data) => { this.routes.set(data); this.loading.set(false); },
+      next: (data) => {
+        this.allRoutes.set(data);
+        this.loading.set(false);
+      },
       error: () => this.loading.set(false),
     });
+  }
+
+  onSearch(e: Event): void {
+    this.search.set((e.target as HTMLInputElement).value);
+    this.currentPage.set(1);
+  }
+
+  setPage(page: number): void {
+    this.currentPage.set(page);
+  }
+  onPageSizeChange(size: number): void {
+    this.pageSize.set(size);
+    this.currentPage.set(1);
   }
 
   openAdd(): void {
@@ -97,13 +150,20 @@ export class Routes implements OnInit {
     this.showModal.set(true);
   }
 
-  closeModal(): void { this.showModal.set(false); }
+  closeModal(): void {
+    this.showModal.set(false);
+  }
 
   save(): void {
-    if (this.form.invalid) { this.form.markAllAsTouched(); return; }
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
     const editing = this.editingRoute();
     const req = editing
-      ? this.http.put<AppRoute>(`${this.API}/${editing.id}`, this.form.value, { withCredentials: true })
+      ? this.http.put<AppRoute>(`${this.API}/${editing.id}`, this.form.value, {
+          withCredentials: true,
+        })
       : this.http.post<AppRoute>(this.API, this.form.value, { withCredentials: true });
     req.subscribe({
       next: () => {
@@ -111,12 +171,18 @@ export class Routes implements OnInit {
         this.closeModal();
         this.loadRoutes();
       },
-      error: (err) => this.alertService.error('Error', err.error?.message ?? 'Something went wrong.'),
+      error: (err) =>
+        this.alertService.error('Error', err.error?.message ?? 'Something went wrong.'),
     });
   }
 
-  confirmDelete(route: AppRoute): void { this.deletingRoute.set(route); this.showDeleteModal.set(true); }
-  cancelDelete(): void { this.showDeleteModal.set(false); }
+  confirmDelete(route: AppRoute): void {
+    this.deletingRoute.set(route);
+    this.showDeleteModal.set(true);
+  }
+  cancelDelete(): void {
+    this.showDeleteModal.set(false);
+  }
 
   deleteRoute(): void {
     const route = this.deletingRoute();
@@ -127,7 +193,8 @@ export class Routes implements OnInit {
         this.showDeleteModal.set(false);
         this.loadRoutes();
       },
-      error: (err) => this.alertService.error('Error', err.error?.message ?? 'Could not delete route.'),
+      error: (err) =>
+        this.alertService.error('Error', err.error?.message ?? 'Could not delete route.'),
     });
   }
 
@@ -142,28 +209,37 @@ export class Routes implements OnInit {
   loadFareSettings(): void {
     this.fareLoading.set(true);
     this.fareForm.reset();
-    this.http.get<any>(`${environment.apiUrl}/api/fare-settings`, { withCredentials: true }).subscribe({
-      next: (settings) => {
-        this.fareForm.patchValue(settings);
-        this.fareLoading.set(false);
-      },
-      error: () => this.fareLoading.set(false),
-    });
+    this.http
+      .get<any>(`${environment.apiUrl}/api/fare-settings`, { withCredentials: true })
+      .subscribe({
+        next: (settings) => {
+          this.fareForm.patchValue(settings);
+          this.fareLoading.set(false);
+        },
+        error: () => this.fareLoading.set(false),
+      });
   }
 
   saveFareSettings(): void {
-    if (this.fareForm.invalid) { this.fareForm.markAllAsTouched(); return; }
+    if (this.fareForm.invalid) {
+      this.fareForm.markAllAsTouched();
+      return;
+    }
     this.fareSaving.set(true);
-    this.http.put(`${environment.apiUrl}/api/fare-settings`, this.fareForm.value, { withCredentials: true }).subscribe({
-      next: () => {
-        this.alertService.success('Saved', 'Global Fare Matrix settings updated.');
-        this.fareSaving.set(false);
-      },
-      error: (err) => {
-        this.alertService.error('Error', err.error?.message ?? 'Could not save fare settings.');
-        this.fareSaving.set(false);
-      },
-    });
+    this.http
+      .put(`${environment.apiUrl}/api/fare-settings`, this.fareForm.value, {
+        withCredentials: true,
+      })
+      .subscribe({
+        next: () => {
+          this.alertService.success('Saved', 'Global Fare Matrix settings updated.');
+          this.fareSaving.set(false);
+        },
+        error: (err) => {
+          this.alertService.error('Error', err.error?.message ?? 'Could not save fare settings.');
+          this.fareSaving.set(false);
+        },
+      });
   }
 
   fieldError(form: FormGroup, field: string): boolean {

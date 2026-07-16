@@ -50,15 +50,58 @@ describe('PrinterSetupService', () => {
     expect(text).toContain('85.50');
   });
 
-  it('sendToPrinter navigates to a rawbt: URL containing the encoded text', () => {
-    const originalHref = window.location.href;
-    let capturedHref = '';
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, set href(v: string) { capturedHref = v; }, get href() { return capturedHref || originalHref; } },
-      writable: true,
-    });
+  it('sendToPrinter throws when no printer is connected', async () => {
+    await expect(service.sendToPrinter('Hello Printer')).rejects.toThrow('Printer not connected.');
+  });
 
-    service.sendToPrinter('Hello Printer');
-    expect(capturedHref).toBe(`rawbt:${encodeURIComponent('Hello Printer')}`);
+  it('connects to a printer over Web Bluetooth and reports connected state', async () => {
+    const writeValue = vi.fn().mockResolvedValue(undefined);
+    const characteristic = { properties: { write: true, writeWithoutResponse: false }, writeValue };
+    const service_ = {
+      getCharacteristics: vi.fn().mockResolvedValue([characteristic]),
+    };
+    const gatt = {
+      connected: true,
+      connect: vi.fn().mockResolvedValue({ getPrimaryService: vi.fn().mockResolvedValue(service_) }),
+      disconnect: vi.fn(),
+    };
+    const device = {
+      id: 'device-1',
+      name: 'Cheap Thermal Printer',
+      gatt,
+      addEventListener: vi.fn(),
+    };
+
+    (navigator as any).bluetooth = {
+      requestDevice: vi.fn().mockResolvedValue(device),
+    };
+
+    await service.connect();
+
+    expect(service.isConnected()).toBe(true);
+    expect(service.deviceName()).toBe('Cheap Thermal Printer');
+
+    await service.sendToPrinter('Hello Printer');
+    expect(writeValue).toHaveBeenCalled();
+  });
+
+  it('disconnect clears connection state', async () => {
+    const characteristic = { properties: { write: true, writeWithoutResponse: false }, writeValue: vi.fn() };
+    const gatt = {
+      connected: true,
+      connect: vi
+        .fn()
+        .mockResolvedValue({ getPrimaryService: vi.fn().mockResolvedValue({ getCharacteristics: vi.fn().mockResolvedValue([characteristic]) }) }),
+      disconnect: vi.fn(),
+    };
+    const device = { id: 'device-1', name: 'Printer', gatt, addEventListener: vi.fn() };
+    (navigator as any).bluetooth = { requestDevice: vi.fn().mockResolvedValue(device) };
+
+    await service.connect();
+    expect(service.isConnected()).toBe(true);
+
+    service.disconnect();
+    expect(service.isConnected()).toBe(false);
+    expect(gatt.disconnect).toHaveBeenCalled();
   });
 });

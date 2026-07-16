@@ -253,19 +253,28 @@ export class TicketingPage implements OnInit {
           this.lastPrintedTicket.set(printed);
           this.showPrintModal.set(true);
 
-          this.printerSetup.sendToPrinter(
-            this.printerSetup.buildReceiptText({
-              ticketNumber: printed.ticketNumber,
-              busNumber: printed.bus?.bus_number ?? '',
-              plateNumber: printed.bus?.plate_number ?? '',
-              origin: printed.route?.origin ?? '',
-              destination: printed.route?.destination ?? '',
-              category: printed.category,
-              distance: printed.distance,
-              fare: printed.fare,
-              date: printed.date,
-            }),
-          );
+          this.printerSetup
+            .sendToPrinter(
+              this.printerSetup.buildReceiptText({
+                ticketNumber: printed.ticketNumber,
+                busNumber: printed.bus?.bus_number ?? '',
+                plateNumber: printed.bus?.plate_number ?? '',
+                origin: printed.route?.origin ?? '',
+                destination: printed.route?.destination ?? '',
+                category: printed.category,
+                distance: printed.distance,
+                fare: printed.fare,
+                date: printed.date,
+              }),
+            )
+            .catch((err) => {
+              this.alertService.error(
+                'Printer Error',
+                err instanceof Error
+                  ? err.message
+                  : 'Ticket saved, but printing failed. Check the printer connection.',
+              );
+            });
 
           this.alertService.success('Success', 'Ticket generated and sent to printing terminal.');
 

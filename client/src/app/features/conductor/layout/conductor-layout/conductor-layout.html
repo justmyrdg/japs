@@ -135,14 +135,16 @@
   @for (item of navItems; track item.route) {
     <a
       [routerLink]="item.route"
-      routerLinkActive="text-white"
-      class="flex flex-col items-center gap-0.5 py-2 px-2 text-white/60 transition-colors duration-150 flex-1 min-w-0"
+      routerLinkActive="active-tab"
+      class="nav-tab flex flex-col items-center gap-0.5 py-2 px-2 text-white/50 transition-all duration-150 flex-1 min-w-0 relative"
       [routerLinkActiveOptions]="{ exact: false }"
     >
-      <i [class]="'pi ' + item.icon + ' text-xl'"></i>
-      <span class="text-[9px] font-semibold truncate w-full text-center leading-tight">{{
-        item.shortLabel ?? item.label
-      }}</span>
+      <span class="tab-bg absolute inset-x-2 inset-y-1 transition-all duration-150"></span>
+      <i [class]="'pi ' + item.icon + ' text-xl relative z-10'"></i>
+      <span
+        class="text-[9px] font-semibold truncate w-full text-center leading-tight relative z-10"
+        >{{ item.shortLabel ?? item.label }}</span
+      >
     </a>
   }
 </nav>

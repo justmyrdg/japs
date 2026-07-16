@@ -18,7 +18,12 @@ export class AuthService {
   login(username: string, password: string): Observable<LoginResponse> {
     return this.http
       .post<LoginResponse>(`${this.API}/login`, { username, password }, { withCredentials: true })
-      .pipe(tap((res) => this._user.set(res.user)));
+      .pipe(
+        tap(() => {
+          // Cookie is now set — user details will be loaded via fetchMe() after redirect
+          this._user.set(null);
+        }),
+      );
   }
 
   logout(): Observable<void> {

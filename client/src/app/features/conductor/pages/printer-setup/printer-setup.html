@@ -1,19 +1,9 @@
 <div class="max-w-xl mx-auto bg-white rounded-2xl p-6 shadow-md border border-gray-100 mt-8">
   <h2 class="text-lg font-bold text-gray-800 mb-2">Printer Setup</h2>
   <p class="text-sm text-gray-500 mb-4">
-    Ticketing requires a Bluetooth thermal printer connected through the
-    <strong>RawBT</strong> app. Install RawBT and pair your printer inside it first, then
-    send a test print below.
+    Ticketing requires a Bluetooth thermal printer. Connect directly over Bluetooth below,
+    then send a test print to confirm it works.
   </p>
-
-  <a
-    href="https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter"
-    target="_blank"
-    rel="noopener"
-    class="inline-block text-blue-600 text-sm font-semibold underline mb-6"
-  >
-    Install RawBT from Play Store
-  </a>
 
   @if (isConfigured()) {
     <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-sm text-green-800">
@@ -26,17 +16,32 @@
       Reconfigure printer
     </button>
   } @else {
-    <button
-      (click)="sendTestPrint()"
-      class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all cursor-pointer"
-    >
-      Send Test Print
-    </button>
+    @if (!isConnected()) {
+      <button
+        (click)="connectPrinter()"
+        [disabled]="connecting()"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+      >
+        {{ connecting() ? 'Connecting...' : 'Connect Printer' }}
+      </button>
+    } @else {
+      <div
+        class="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-sm text-green-800 flex items-center gap-2"
+      >
+        <i class="pi pi-check-circle"></i> Connected to {{ deviceName() }}
+      </div>
 
-    @if (showMissingAppHint()) {
-      <p class="text-xs text-amber-600 mt-3">
-        Nothing happened? Make sure RawBT is installed using the link above.
-      </p>
+      <button
+        (click)="sendTestPrint()"
+        [disabled]="printing()"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+      >
+        {{ printing() ? 'Printing...' : 'Send Test Print' }}
+      </button>
+    }
+
+    @if (connectError()) {
+      <p class="text-xs text-red-600 mt-3">{{ connectError() }}</p>
     }
 
     @if (showConfirmation()) {
@@ -61,8 +66,7 @@
 
     @if (showTroubleshooting()) {
       <div class="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800">
-        Make sure the printer is powered on and paired inside RawBT, then try the test print
-        again.
+        Make sure the printer is powered on and has paper, then try the test print again.
       </div>
     }
   }
