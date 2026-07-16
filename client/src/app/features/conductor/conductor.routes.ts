@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { ConductorLayout } from './layout/conductor-layout/conductor-layout';
 import { authGuard } from '../../core/guards/auth.guard';
 import { roleGuard } from '../../core/guards/role.guard';
+import { printerSetupGuard } from '../../core/guards/printer-setup.guard';
 
 export const CONDUCTOR_ROUTES: Routes = [
   {
@@ -9,15 +10,21 @@ export const CONDUCTOR_ROUTES: Routes = [
     component: ConductorLayout,
     canActivate: [authGuard, roleGuard('conductor')],
     children: [
-      { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
+      { path: '', redirectTo: 'trips', pathMatch: 'full' },
       {
-        path: 'dashboard',
+        path: 'trips',
         loadComponent: () =>
           import('./pages/dashboard/dashboard').then((m) => m.ConductorDashboard),
       },
       {
         path: 'ticketing',
+        canActivate: [printerSetupGuard],
         loadComponent: () => import('./pages/ticketing/ticketing').then((m) => m.TicketingPage),
+      },
+      {
+        path: 'printer-setup',
+        loadComponent: () =>
+          import('./pages/printer-setup/printer-setup').then((m) => m.PrinterSetupPage),
       },
       {
         path: 'tickets',
