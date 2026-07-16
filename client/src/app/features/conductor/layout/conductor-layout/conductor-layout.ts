@@ -26,7 +26,7 @@ export class ConductorLayout {
   userMenuOpen = signal(false);
 
   navItems: NavItem[] = [
-    { label: 'My Trips', shortLabel: 'Trips', icon: 'pi-list', route: 'dashboard' },
+    { label: 'My Trips', shortLabel: 'Trips', icon: 'pi-list', route: 'trips' },
     { label: 'Ticketing Terminal', shortLabel: 'Ticketing', icon: 'pi-ticket', route: 'ticketing' },
     { label: 'All Tickets', shortLabel: 'Tickets', icon: 'pi-receipt', route: 'tickets' },
     { label: 'Remittances', icon: 'pi-file-check', route: 'remittances' },
