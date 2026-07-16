@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiUrl: 'https://your-production-server.com',
+  apiUrl: 'https://japs-backend-pzdz.onrender.com',
 };

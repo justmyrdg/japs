@@ -28,6 +28,12 @@ build/
 .idea/
 *.sublime-workspace
 
+# Claude Code worktrees (nested git checkouts — must never be tracked as embedded repos)
+.claude/
+
+# TLS certs (dev-only, self-signed)
+certs/
+
 # System
 .DS_Store
 Thumbs.db

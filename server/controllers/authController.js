@@ -6,7 +6,7 @@ const ROLE_REDIRECT = {
   owner: "/owner/dashboard",
   secretary: "/secretary/dashboard",
   audit_teller: "/audit-teller/dashboard",
-  conductor: "/conductor/dashboard",
+  conductor: "/conductor/trips",
   driver: "/driver/dashboard",
 };
 
@@ -52,17 +52,6 @@ const login = async (req, res) => {
 
   return res.status(200).json({
     redirectUrl: ROLE_REDIRECT[user.role] ?? "/dashboard",
-    user: {
-      id: user.id,
-      employee_id: user.employee_id,
-      username: user.username,
-      role: user.role,
-      first_name: user.first_name,
-      middle_name: user.middle_name,
-      last_name: user.last_name,
-      email: user.email,
-      contact_number: user.contact_number,
-    },
   });
 };
 
