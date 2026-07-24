@@ -26,9 +26,14 @@
       </button>
     } @else {
       <div
-        class="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-sm text-green-800 flex items-center gap-2"
+        class="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-sm text-green-800 flex items-center justify-between gap-2"
       >
-        <i class="pi pi-check-circle"></i> Connected to {{ deviceName() }}
+        <span class="flex items-center gap-2">
+          <i class="pi pi-check-circle"></i> Connected to {{ deviceName() }}
+        </span>
+        @if (batteryLevel() !== null) {
+          <span class="font-bold {{ batteryColorClass() }}">{{ batteryLevel() }}%</span>
+        }
       </div>
 
       <button

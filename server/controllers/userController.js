@@ -1,5 +1,7 @@
 const bcrypt = require("bcrypt");
+const { Sequelize } = require("sequelize");
 const { User } = require("../models");
+const { sendAccountCredentialsEmail } = require("../config/mailer");
 
 const ALLOWED_ROLES = ["secretary", "audit_teller", "conductor", "driver"];
 
@@ -22,7 +24,32 @@ const createUser = async (req, res) => {
 	}
 
 	const hashed = await bcrypt.hash(password, 12);
-	const user = await User.create({ ...rest, role, password: hashed });
+
+	let user;
+	try {
+		user = await User.create({ ...rest, role, password: hashed });
+	} catch (err) {
+		if (err instanceof Sequelize.UniqueConstraintError) {
+			const field = err.errors?.[0]?.path ?? "field";
+			return res.status(409).json({ message: `That ${field} is already in use.` });
+		}
+		if (err instanceof Sequelize.ValidationError) {
+			return res.status(400).json({ message: err.errors?.[0]?.message ?? "Invalid data." });
+		}
+		throw err;
+	}
+
+	try {
+		await sendAccountCredentialsEmail({
+			to: user.email,
+			employee_id: user.employee_id,
+			username: user.username,
+			password,
+			role: user.role,
+		});
+	} catch (err) {
+		console.error("Failed to send account credentials email:", err);
+	}
 
 	const { password: _, ...safe } = user.toJSON();
 	return res.status(201).json(safe);

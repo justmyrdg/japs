@@ -6,14 +6,14 @@ import { PrinterSetupService } from '../../../../core/services/printer-setup.ser
 describe('PrinterSetupPage', () => {
   let component: PrinterSetupPage;
   let fixture: ComponentFixture<PrinterSetupPage>;
-  let sendToPrinter: ReturnType<typeof vi.fn>;
+  let printSampleTicketImage: ReturnType<typeof vi.fn>;
   let connect: ReturnType<typeof vi.fn>;
   let markConfigured: ReturnType<typeof vi.fn>;
   let connected: boolean;
 
   beforeEach(async () => {
     connected = false;
-    sendToPrinter = vi.fn().mockResolvedValue(undefined);
+    printSampleTicketImage = vi.fn().mockResolvedValue(undefined);
     connect = vi.fn().mockImplementation(async () => {
       connected = true;
     });
@@ -26,8 +26,7 @@ describe('PrinterSetupPage', () => {
         {
           provide: PrinterSetupService,
           useValue: {
-            buildReceiptText: () => 'SAMPLE RECEIPT',
-            sendToPrinter,
+            printSampleTicketImage,
             connect,
             markConfigured,
             reset: vi.fn(),
@@ -54,9 +53,9 @@ describe('PrinterSetupPage', () => {
     expect(component.isConnected()).toBe(true);
   });
 
-  it('sends a sample receipt when sendTestPrint is called', async () => {
+  it('sends a sample ticket image when sendTestPrint is called', async () => {
     await component.sendTestPrint();
-    expect(sendToPrinter).toHaveBeenCalledWith('SAMPLE RECEIPT');
+    expect(printSampleTicketImage).toHaveBeenCalled();
     expect(component.showConfirmation()).toBe(true);
   });
 

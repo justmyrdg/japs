@@ -35,17 +35,6 @@ export class Routes implements OnInit {
 
   private readonly API = `${environment.apiUrl}/api/routes`;
 
-  readonly CATEGORIES = [
-    { key: 'regular', label: 'Regular' },
-    { key: 'student', label: 'Student' },
-    { key: 'senior_citizen', label: 'Senior Citizen' },
-    { key: 'pwd', label: 'PWD' },
-    { key: 'discounted', label: 'Discounted' },
-  ];
-
-  // ── Tabs ──────────────────────────────────────────────────────────────
-  activeTab = signal<'routes' | 'fare-matrix'>('routes');
-
   // ── Routes ────────────────────────────────────────────────────────────
   private allRoutes = signal<AppRoute[]>([]);
   routes = computed(() => this.allRoutes());
@@ -93,21 +82,6 @@ export class Routes implements OnInit {
     origin: ['', Validators.required],
     destination: ['', Validators.required],
     distance_km: [null],
-  });
-
-  // ── Fare settings ─────────────────────────────────────────────────────
-  fareLoading = signal(false);
-  fareSaving = signal(false);
-
-  fareForm: FormGroup = this.fb.group({
-    minimum_fare: [null, [Validators.required, Validators.min(0)]],
-    rate_per_km: [null, [Validators.required, Validators.min(0)]],
-    regular_multiplier: [1.0, [Validators.required, Validators.min(0)]],
-    student_multiplier: [0.8, [Validators.required, Validators.min(0)]],
-    senior_citizen_multiplier: [0.8, [Validators.required, Validators.min(0)]],
-    pwd_multiplier: [0.8, [Validators.required, Validators.min(0)]],
-    discounted_multiplier: [0.8, [Validators.required, Validators.min(0)]],
-    effective_date: ['', Validators.required],
   });
 
   ngOnInit(): void {
@@ -196,50 +170,6 @@ export class Routes implements OnInit {
       error: (err) =>
         this.alertService.error('Error', err.error?.message ?? 'Could not delete route.'),
     });
-  }
-
-  // ── Fare settings ─────────────────────────────────────────────────────
-  switchTab(tab: 'routes' | 'fare-matrix'): void {
-    this.activeTab.set(tab);
-    if (tab === 'fare-matrix') {
-      this.loadFareSettings();
-    }
-  }
-
-  loadFareSettings(): void {
-    this.fareLoading.set(true);
-    this.fareForm.reset();
-    this.http
-      .get<any>(`${environment.apiUrl}/api/fare-settings`, { withCredentials: true })
-      .subscribe({
-        next: (settings) => {
-          this.fareForm.patchValue(settings);
-          this.fareLoading.set(false);
-        },
-        error: () => this.fareLoading.set(false),
-      });
-  }
-
-  saveFareSettings(): void {
-    if (this.fareForm.invalid) {
-      this.fareForm.markAllAsTouched();
-      return;
-    }
-    this.fareSaving.set(true);
-    this.http
-      .put(`${environment.apiUrl}/api/fare-settings`, this.fareForm.value, {
-        withCredentials: true,
-      })
-      .subscribe({
-        next: () => {
-          this.alertService.success('Saved', 'Global Fare Matrix settings updated.');
-          this.fareSaving.set(false);
-        },
-        error: (err) => {
-          this.alertService.error('Error', err.error?.message ?? 'Could not save fare settings.');
-          this.fareSaving.set(false);
-        },
-      });
   }
 
   fieldError(form: FormGroup, field: string): boolean {

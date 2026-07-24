@@ -1,6 +1,5 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { RouterLink, ActivatedRoute } from '@angular/router';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { environment } from '../../../../../environments/environment';
 import { TablePagination } from '../../../../shared/components/table-pagination/table-pagination';
@@ -12,66 +11,94 @@ interface Remittance {
   gross_income: number;
   total_expenses: number;
   net_gross: number;
+  driver_commission: number;
+  conductor_commission: number;
+  bonus_allowance: number;
+  other_deductions: number;
+  cash_deposit: number;
   total_less: number;
   net_collection: number;
-  status: 'submitted' | 'approved' | 'rejected';
+  driver_officer_share: number;
+  conductor_officer_share: number;
+  teller_remarks: string | null;
+  status: 'submitted' | 'approved' | 'rejected' | 'finalized';
   submitted_at: string;
   approved_at: string | null;
   conductor: { id: number; first_name: string; last_name: string; employee_id: string };
   driver: { id: number; first_name: string; last_name: string; employee_id: string };
   BusModel: { id: number; bus_number: string; plate_number: string };
   approver: { id: number; first_name: string; last_name: string } | null;
+  RemittanceExpenses: { id: number; expense_type: string; amount: number }[];
+  Trips: {
+    id: number;
+    trip_number: number;
+    departure_time: string;
+    grand_total: number;
+    ticket_number_start: string | null;
+    ticket_number_end: string | null;
+    Route: { origin: string; destination: string } | null;
+  }[];
 }
 
 type SortField = 'date' | 'submitted_at' | 'net_collection' | 'status';
 
+// Read-only disclosure of the driver's own remittances — drivers cannot submit, edit,
+// approve, or reject; this mirrors the conductor list view minus every write action.
 @Component({
-  selector: 'app-remittances',
-  imports: [RouterLink, CurrencyPipe, DatePipe, TablePagination],
+  selector: 'app-driver-remittances',
+  imports: [CurrencyPipe, DatePipe, TablePagination],
   templateUrl: './remittances.html',
-  styleUrl: './remittances.css',
 })
-export class Remittances implements OnInit {
+export class DriverRemittancesPage implements OnInit {
   private http = inject(HttpClient);
-  private route = inject(ActivatedRoute);
-  private readonly API = `${environment.apiUrl}/api/owner`;
+
+  private readonly API = `${environment.apiUrl}/api/driver`;
 
   private allRemittances = signal<Remittance[]>([]);
   loading = signal(false);
+  selected = signal<Remittance | null>(null);
 
   search = signal('');
-  statusFilter = signal<string>('all');
-  dateFrom = signal<string>('');
-  dateTo = signal<string>('');
+  statusFilter = signal('all');
+  dateFrom = signal('');
+  dateTo = signal('');
   sortField = signal<SortField>('submitted_at');
   sortDir = signal<'asc' | 'desc'>('desc');
   pageSize = signal(10);
   currentPage = signal(1);
+  readonly PAGE_SIZES = [10, 25, 50];
 
-  readonly PAGE_SIZES = [10, 25, 50, 100];
+  ngOnInit(): void {
+    this.loadRemittances();
+  }
+
+  loadRemittances(): void {
+    this.loading.set(true);
+    this.http.get<Remittance[]>(`${this.API}/remittances`, { withCredentials: true }).subscribe({
+      next: (data) => {
+        this.allRemittances.set(data);
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
+    });
+  }
 
   filtered = computed(() => {
     const q = this.search().toLowerCase().trim();
     const status = this.statusFilter();
     const from = this.dateFrom();
     const to = this.dateTo();
-
     return this.allRemittances().filter((r) => {
       const matchSearch =
         !q ||
-        r.conductor.first_name.toLowerCase().includes(q) ||
-        r.conductor.last_name.toLowerCase().includes(q) ||
-        r.conductor.employee_id.toLowerCase().includes(q) ||
-        r.driver.first_name.toLowerCase().includes(q) ||
-        r.driver.last_name.toLowerCase().includes(q) ||
         r.BusModel.bus_number.toLowerCase().includes(q) ||
-        r.BusModel.plate_number.toLowerCase().includes(q);
-
+        r.BusModel.plate_number.toLowerCase().includes(q) ||
+        r.conductor.first_name.toLowerCase().includes(q) ||
+        r.conductor.last_name.toLowerCase().includes(q);
       const matchStatus = status === 'all' || r.status === status;
-      const remitDate = new Date(r.date);
-      const matchFrom = !from || remitDate >= new Date(from);
-      const matchTo = !to || remitDate <= new Date(to + 'T23:59:59');
-
+      const d = new Date(r.date);
+      const matchFrom = !from || d >= new Date(from);
+      const matchTo = !to || d <= new Date(to + 'T23:59:59');
       return matchSearch && matchStatus && matchFrom && matchTo;
     });
   });
@@ -103,8 +130,8 @@ export class Remittances implements OnInit {
     return this.sorted().slice(start, start + this.pageSize());
   });
   pageNumbers = computed(() => {
-    const total = this.totalPages();
-    const cur = this.currentPage();
+    const total = this.totalPages(),
+      cur = this.currentPage();
     const pages: (number | '...')[] = [];
     for (let i = 1; i <= total; i++) {
       if (i === 1 || i === total || Math.abs(i - cur) <= 1) pages.push(i);
@@ -112,24 +139,6 @@ export class Remittances implements OnInit {
     }
     return pages;
   });
-
-  ngOnInit(): void {
-    this.route.queryParams.subscribe((params) => {
-      if (params['status']) this.statusFilter.set(params['status']);
-    });
-    this.loadRemittances();
-  }
-
-  loadRemittances(): void {
-    this.loading.set(true);
-    this.http.get<Remittance[]>(`${this.API}/remittances`, { withCredentials: true }).subscribe({
-      next: (data) => {
-        this.allRemittances.set(data);
-        this.loading.set(false);
-      },
-      error: () => this.loading.set(false),
-    });
-  }
 
   onSearch(e: Event): void {
     this.search.set((e.target as HTMLInputElement).value);
@@ -152,7 +161,6 @@ export class Remittances implements OnInit {
     this.dateTo.set('');
     this.currentPage.set(1);
   }
-
   setSort(field: SortField): void {
     if (this.sortField() === field) this.sortDir.update((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
@@ -161,12 +169,10 @@ export class Remittances implements OnInit {
     }
     this.currentPage.set(1);
   }
-
   sortIcon(field: SortField): string {
     if (this.sortField() !== field) return 'pi-sort';
     return this.sortDir() === 'asc' ? 'pi-sort-up' : 'pi-sort-down';
   }
-
   setPage(page: number): void {
     this.currentPage.set(page);
   }
@@ -174,13 +180,32 @@ export class Remittances implements OnInit {
     this.pageSize.set(size);
     this.currentPage.set(1);
   }
-
   getStatusBadge(status: string): string {
-    const badges: Record<string, string> = {
-      submitted: 'bg-amber-100 text-amber-800',
-      approved: 'bg-green-100 text-green-800',
-      rejected: 'bg-red-100 text-red-800',
+    return (
+      (
+        {
+          submitted: 'bg-amber-100 text-amber-800',
+          approved: 'bg-green-100 text-green-800',
+          rejected: 'bg-red-100 text-red-800',
+          finalized: 'bg-blue-100 text-blue-800',
+        } as any
+      )[status] ?? 'bg-gray-100 text-gray-800'
+    );
+  }
+
+  formatExpenseType(type: string): string {
+    const labels: Record<string, string> = {
+      officer: 'Officer / Police',
+      toll_fees: 'Toll Fees',
+      parking: 'Parking',
+      ppa: 'PPA (Port Authority)',
+      washing: 'Bus Washing',
+      diesel: 'Diesel / Fuel',
+      caller_grand_terminal: 'Caller (Grand Terminal)',
+      caller_calamba_terminal: 'Caller (Calamba Terminal)',
+      pwd: 'PWD / Senior Discount',
+      miscellaneous: 'Miscellaneous',
     };
-    return badges[status] ?? 'bg-gray-100 text-gray-800';
+    return labels[type] ?? type;
   }
 }

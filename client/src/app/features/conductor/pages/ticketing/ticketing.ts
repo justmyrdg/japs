@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, ElementRef, inject, signal, computed, viewChild, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -33,11 +33,11 @@ export interface FareSettings {
   minimum_fare: number;
   base_distance_km: number;
   rate_per_km: number;
-  regular_multiplier: number;
-  student_multiplier: number;
-  senior_citizen_multiplier: number;
-  pwd_multiplier: number;
-  discounted_multiplier: number;
+  regular_discount_percent: number;
+  student_discount_percent: number;
+  senior_citizen_discount_percent: number;
+  pwd_discount_percent: number;
+  discounted_discount_percent: number;
 }
 
 export interface PassengerCount {
@@ -74,6 +74,7 @@ export class TicketingPage implements OnInit {
   // Thermal print modal
   showPrintModal = signal(false);
   lastPrintedTicket = signal<any | null>(null);
+  private receiptContentRef = viewChild<ElementRef<HTMLElement>>('receiptContent');
 
   constructor() {
     this.ticketForm = this.fb.group({
@@ -189,30 +190,13 @@ export class TicketingPage implements OnInit {
       `(${distance <= baseDistanceKm ? 'minimum fare' : 'minimum + extra km'})`,
     );
 
-    // Apply category multiplier (stored as percentage)
+    // Apply category discount percentage
     const category = this.ticketForm.get('category')?.value;
-    let multiplier = 100;
-    switch (category) {
-      case 'regular':
-        multiplier = Number(settings.regular_multiplier);
-        break;
-      case 'student':
-        multiplier = Number(settings.student_multiplier);
-        break;
-      case 'senior_citizen':
-        multiplier = Number(settings.senior_citizen_multiplier);
-        break;
-      case 'pwd':
-        multiplier = Number(settings.pwd_multiplier);
-        break;
-      case 'discounted':
-        multiplier = Number(settings.discounted_multiplier);
-        break;
-    }
+    const discountPercent = this.getDiscountPercent(category, settings);
 
-    console.log('Category:', category, 'Multiplier:', multiplier, '%');
+    console.log('Category:', category, 'Discount:', discountPercent, '%');
 
-    const finalFare = parseFloat((baseFare * (multiplier / 100)).toFixed(2));
+    const finalFare = parseFloat((baseFare * (1 - discountPercent / 100)).toFixed(2));
     console.log('FINAL FARE:', finalFare);
 
     // Patch without emitting event to prevent infinite loop
@@ -239,13 +223,14 @@ export class TicketingPage implements OnInit {
     this.http
       .post<any>(`${this.API}/trips/${tripId}/tickets`, payload, { withCredentials: true })
       .subscribe({
-        next: (res) => {
+        next: async (res) => {
           this.isPrinting.set(false);
           const printed = {
             ticketNumber: res.ticket?.ticket_number,
             category: payload.category,
             distance: payload.distance,
             fare: payload.fare,
+            discountPercent: this.getDiscountPercent(payload.category),
             date: new Date(),
             route: this.selectedTrip()?.Route,
             bus: this.selectedTrip()?.BusModel,
@@ -253,21 +238,11 @@ export class TicketingPage implements OnInit {
           this.lastPrintedTicket.set(printed);
           this.showPrintModal.set(true);
 
-          this.printerSetup
-            .sendToPrinter(
-              this.printerSetup.buildReceiptText({
-                ticketNumber: printed.ticketNumber,
-                busNumber: printed.bus?.bus_number ?? '',
-                plateNumber: printed.bus?.plate_number ?? '',
-                origin: printed.route?.origin ?? '',
-                destination: printed.route?.destination ?? '',
-                category: printed.category,
-                distance: printed.distance,
-                fare: printed.fare,
-                date: printed.date,
-              }),
-            )
-            .catch((err) => {
+          // Wait for the modal (and its receipt content ref) to actually render.
+          await this.waitForRender();
+          const receiptEl = this.receiptContentRef()?.nativeElement;
+          if (receiptEl) {
+            this.printerSetup.printTicketImage(receiptEl).catch((err) => {
               this.alertService.error(
                 'Printer Error',
                 err instanceof Error
@@ -275,6 +250,7 @@ export class TicketingPage implements OnInit {
                   : 'Ticket saved, but printing failed. Check the printer connection.',
               );
             });
+          }
 
           this.alertService.success('Success', 'Ticket generated and sent to printing terminal.');
 
@@ -289,12 +265,38 @@ export class TicketingPage implements OnInit {
       });
   }
 
+  /** Resolves after the browser has painted at least one frame, so a just-set signal
+   *  (e.g. showPrintModal) is guaranteed to be reflected in the DOM before it's read. */
+  private waitForRender(): Promise<void> {
+    return new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+  }
+
   closePrintModal(): void {
     this.showPrintModal.set(false);
   }
 
   triggerBrowserPrint(): void {
     window.print();
+  }
+
+  getDiscountPercent(category: string, settings: FareSettings | null = this.fareSettings()): number {
+    if (!settings) return 0;
+    switch (category) {
+      case 'regular':
+        return Number(settings.regular_discount_percent);
+      case 'student':
+        return Number(settings.student_discount_percent);
+      case 'senior_citizen':
+        return Number(settings.senior_citizen_discount_percent);
+      case 'pwd':
+        return Number(settings.pwd_discount_percent);
+      case 'discounted':
+        return Number(settings.discounted_discount_percent);
+      default:
+        return 0;
+    }
   }
 
   getCategoryLabel(cat: string): string {

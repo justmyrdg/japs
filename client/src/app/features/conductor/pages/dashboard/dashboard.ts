@@ -31,6 +31,16 @@ export interface Trip {
 type TripTab = 'today' | 'all';
 type ViewMode = 'card' | 'table';
 
+/** Formats a date as YYYY-MM-DD using local calendar fields, not UTC (unlike
+ *  `toISOString()`, which would shift the date near midnight in any timezone
+ *  ahead/behind UTC). */
+function localDateStr(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 @Component({
   selector: 'app-conductor-dashboard',
   imports: [DatePipe, CurrencyPipe, RouterLink, TablePagination],
@@ -55,13 +65,13 @@ export class ConductorDashboard implements OnInit {
   currentPage = signal(1);
   readonly PAGE_SIZES = [6, 9, 18, 36];
 
-  // Today's date string for comparison
-  private todayStr = new Date().toISOString().split('T')[0];
+  // Today's date string for comparison (local calendar date)
+  private todayStr = localDateStr(new Date());
 
   todayTrips = computed(() =>
     this.trips().filter((t) => {
-      const d = t.departure_time?.split('T')[0];
-      return d === this.todayStr;
+      if (!t.departure_time) return false;
+      return localDateStr(new Date(t.departure_time)) === this.todayStr;
     }),
   );
 
@@ -129,7 +139,10 @@ export class ConductorDashboard implements OnInit {
     const trips = this.trips();
     // Build a set of (bus_id, trip_number) pairs that are still scheduled today
     const scheduledToday = trips.filter(
-      (t) => t.status === 'scheduled' && t.departure_time?.split('T')[0] === todayStr,
+      (t) =>
+        t.status === 'scheduled' &&
+        !!t.departure_time &&
+        localDateStr(new Date(t.departure_time)) === todayStr,
     );
     // For each trip return whether it's the next one to start
     const result = new Map<number, boolean>();

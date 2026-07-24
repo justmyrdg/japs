@@ -23,11 +23,6 @@ export const AUDIT_TELLER_ROUTES: Routes = [
         loadComponent: () =>
           import('./pages/remittance-review').then((m) => m.RemittanceReviewPage),
       },
-      {
-        path: 'create-remittance',
-        loadComponent: () =>
-          import('./pages/create-remittance').then((m) => m.CreateRemittancePage),
-      },
     ],
   },
 ];

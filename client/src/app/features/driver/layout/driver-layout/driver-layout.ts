@@ -21,7 +21,10 @@ export class DriverLayout {
   user = this.auth.getUser();
   sidebarOpen = signal(true);
 
-  navItems: NavItem[] = [{ label: 'My Schedule', icon: 'pi-calendar', route: 'dashboard' }];
+  navItems: NavItem[] = [
+    { label: 'My Schedule', icon: 'pi-calendar', route: 'dashboard' },
+    { label: 'My Remittances', icon: 'pi-file-check', route: 'remittances' },
+  ];
 
   toggleSidebar(): void {
     this.sidebarOpen.update((v) => !v);

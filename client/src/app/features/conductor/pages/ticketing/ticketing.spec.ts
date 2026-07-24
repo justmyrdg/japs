@@ -9,10 +9,10 @@ describe('TicketingPage', () => {
   let component: TicketingPage;
   let fixture: ComponentFixture<TicketingPage>;
   let httpMock: HttpTestingController;
-  let sendToPrinter: ReturnType<typeof vi.fn>;
+  let printTicketImage: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    sendToPrinter = vi.fn().mockResolvedValue(undefined);
+    printTicketImage = vi.fn().mockResolvedValue(undefined);
 
     await TestBed.configureTestingModule({
       imports: [TicketingPage, HttpClientTestingModule],
@@ -21,8 +21,7 @@ describe('TicketingPage', () => {
         {
           provide: PrinterSetupService,
           useValue: {
-            sendToPrinter,
-            buildReceiptText: () => 'RECEIPT TEXT',
+            printTicketImage,
           },
         },
       ],
@@ -38,11 +37,11 @@ describe('TicketingPage', () => {
       minimum_fare: 10,
       base_distance_km: 4,
       rate_per_km: 2,
-      regular_multiplier: 100,
-      student_multiplier: 80,
-      senior_citizen_multiplier: 80,
-      pwd_multiplier: 80,
-      discounted_multiplier: 80,
+      regular_discount_percent: 0,
+      student_discount_percent: 20,
+      senior_citizen_discount_percent: 20,
+      pwd_discount_percent: 20,
+      discounted_discount_percent: 20,
     });
     httpMock.expectOne(`${environment.apiUrl}/api/conductor/trips`).flush([]);
     await fixture.whenStable();
@@ -50,7 +49,7 @@ describe('TicketingPage', () => {
 
   afterEach(() => httpMock.verify());
 
-  it('sends the receipt to the printer after a successful ticket submission', () => {
+  it('prints an image of the rendered receipt after a successful ticket submission', async () => {
     component.selectedTripId.set(1);
     component.trips.set([
       {
@@ -72,7 +71,15 @@ describe('TicketingPage', () => {
     const req = httpMock.expectOne(`${environment.apiUrl}/api/conductor/trips/1/tickets`);
     req.flush({ ticket: { ticket_number: 7 } });
 
-    expect(sendToPrinter).toHaveBeenCalledWith('RECEIPT TEXT');
+    // Let the modal render so the receipt content element exists before the
+    // component's own double-rAF wait resolves and reads it.
+    fixture.detectChanges();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    expect(printTicketImage).toHaveBeenCalledTimes(1);
+    const receiptEl = printTicketImage.mock.calls[0][0] as HTMLElement;
+    expect(receiptEl.textContent).toContain('BUS-01');
+    expect(receiptEl.textContent).toContain('Manila');
 
     // printTicketSubmit()'s success handler also refreshes trips & passenger counts.
     httpMock.expectOne(`${environment.apiUrl}/api/conductor/trips`).flush([]);

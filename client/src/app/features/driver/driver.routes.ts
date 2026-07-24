@@ -14,6 +14,11 @@ export const DRIVER_ROUTES: Routes = [
         path: 'dashboard',
         loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.DriverDashboard),
       },
+      {
+        path: 'remittances',
+        loadComponent: () =>
+          import('./pages/remittances/remittances').then((m) => m.DriverRemittancesPage),
+      },
     ],
   },
 ];

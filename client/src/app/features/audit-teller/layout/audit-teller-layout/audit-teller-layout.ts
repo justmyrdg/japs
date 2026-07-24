@@ -24,7 +24,6 @@ export class AuditTellerLayout {
   navItems: NavItem[] = [
     { label: 'Dashboard', icon: 'pi-home', route: 'dashboard' },
     { label: 'Remittances', icon: 'pi-file-check', route: 'remittances' },
-    { label: 'Create Remittance', icon: 'pi-plus-circle', route: 'create-remittance' },
   ];
 
   toggleSidebar(): void {

@@ -9,11 +9,11 @@ interface FareSettingsData {
   minimum_fare: number;
   base_distance_km: number;
   rate_per_km: number;
-  regular_multiplier: number;
-  student_multiplier: number;
-  senior_citizen_multiplier: number;
-  pwd_multiplier: number;
-  discounted_multiplier: number;
+  regular_discount_percent: number;
+  student_discount_percent: number;
+  senior_citizen_discount_percent: number;
+  pwd_discount_percent: number;
+  discounted_discount_percent: number;
   effective_date: string;
 }
 
@@ -36,10 +36,10 @@ export class FareSettings implements OnInit {
   previewDistance = signal(10);
 
   readonly CATEGORIES = [
-    { key: 'regular', label: 'Regular', hint: 'Full fare (100%)' },
-    { key: 'student', label: 'Student', hint: 'Typically 80%' },
-    { key: 'senior_citizen', label: 'Senior Citizen', hint: '80% required by law' },
-    { key: 'pwd', label: 'PWD', hint: '80% required by law' },
+    { key: 'regular', label: 'Regular', hint: 'No discount' },
+    { key: 'student', label: 'Student', hint: 'Typically 20%' },
+    { key: 'senior_citizen', label: 'Senior Citizen', hint: '20% required by law' },
+    { key: 'pwd', label: 'PWD', hint: '20% required by law' },
     { key: 'discounted', label: 'Discounted', hint: 'Promotional rate' },
   ];
 
@@ -47,11 +47,17 @@ export class FareSettings implements OnInit {
     minimum_fare: [50.0, [Validators.required, Validators.min(0)]],
     base_distance_km: [5.0, [Validators.required, Validators.min(0)]],
     rate_per_km: [2.0, [Validators.required, Validators.min(0)]],
-    regular_multiplier: [100, [Validators.required, Validators.min(0), Validators.max(100)]],
-    student_multiplier: [80, [Validators.required, Validators.min(0), Validators.max(100)]],
-    senior_citizen_multiplier: [80, [Validators.required, Validators.min(0), Validators.max(100)]],
-    pwd_multiplier: [80, [Validators.required, Validators.min(0), Validators.max(100)]],
-    discounted_multiplier: [80, [Validators.required, Validators.min(0), Validators.max(100)]],
+    regular_discount_percent: [0, [Validators.required, Validators.min(0), Validators.max(100)]],
+    student_discount_percent: [20, [Validators.required, Validators.min(0), Validators.max(100)]],
+    senior_citizen_discount_percent: [
+      20,
+      [Validators.required, Validators.min(0), Validators.max(100)],
+    ],
+    pwd_discount_percent: [20, [Validators.required, Validators.min(0), Validators.max(100)]],
+    discounted_discount_percent: [
+      20,
+      [Validators.required, Validators.min(0), Validators.max(100)],
+    ],
     effective_date: [new Date().toISOString().slice(0, 10), Validators.required],
   });
 
@@ -107,11 +113,11 @@ export class FareSettings implements OnInit {
       distance <= baseDistanceKm ? minFare : minFare + (distance - baseDistanceKm) * ratePerKm;
 
     return {
-      regular: baseFare * ((parseFloat(v.regular_multiplier) || 100) / 100),
-      student: baseFare * ((parseFloat(v.student_multiplier) || 100) / 100),
-      senior_citizen: baseFare * ((parseFloat(v.senior_citizen_multiplier) || 100) / 100),
-      pwd: baseFare * ((parseFloat(v.pwd_multiplier) || 100) / 100),
-      discounted: baseFare * ((parseFloat(v.discounted_multiplier) || 100) / 100),
+      regular: baseFare * (1 - (parseFloat(v.regular_discount_percent) || 0) / 100),
+      student: baseFare * (1 - (parseFloat(v.student_discount_percent) || 0) / 100),
+      senior_citizen: baseFare * (1 - (parseFloat(v.senior_citizen_discount_percent) || 0) / 100),
+      pwd: baseFare * (1 - (parseFloat(v.pwd_discount_percent) || 0) / 100),
+      discounted: baseFare * (1 - (parseFloat(v.discounted_discount_percent) || 0) / 100),
     };
   }
 }

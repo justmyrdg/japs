@@ -1,5 +1,13 @@
 const { Op } = require("sequelize");
 const { BusModel, User, Trip, Route, BusCrewHistory } = require("../models");
+const {
+  fullName,
+  sendTripScheduledEmail,
+  sendTripsScheduledSummaryEmail,
+  sendCrewAssignmentEmail,
+} = require("../config/mailer");
+
+const notify = (promise) => promise.catch((err) => console.error("Email notification failed:", err));
 
 const busInclude = [
   {
@@ -83,6 +91,8 @@ const assignCrew = async (req, res) => {
 
   const { driver_id, conductor_id } = req.body;
   const now = new Date();
+  const previousDriverId = bus.driver_id;
+  const previousConductorId = bus.conductor_id;
 
   // Close any open history record for this bus
   await BusCrewHistory.update(
@@ -104,6 +114,43 @@ const assignCrew = async (req, res) => {
     driver_id: driver_id || null,
     conductor_id: conductor_id || null,
   });
+
+  const busLabel = bus.bus_number;
+  const notifyCrewChange = async (previousId, newId, role) => {
+    if (previousId === newId) return;
+    if (previousId) {
+      const prevUser = await User.findByPk(previousId);
+      if (prevUser) {
+        notify(
+          sendCrewAssignmentEmail({
+            to: prevUser.email,
+            name: fullName(prevUser),
+            role,
+            busLabel,
+            assigned: false,
+          }),
+        );
+      }
+    }
+    if (newId) {
+      const newUser = await User.findByPk(newId);
+      if (newUser) {
+        notify(
+          sendCrewAssignmentEmail({
+            to: newUser.email,
+            name: fullName(newUser),
+            role,
+            busLabel,
+            assigned: true,
+          }),
+        );
+      }
+    }
+  };
+
+  await notifyCrewChange(previousDriverId, driver_id || null, "driver");
+  await notifyCrewChange(previousConductorId, conductor_id || null, "conductor");
+
   return res.json(bus);
 };
 
@@ -151,6 +198,32 @@ const getTrips = async (req, res) => {
   return res.json(trips);
 };
 
+// Look up bus/route labels and notify the assigned driver/conductor of a scheduled trip.
+const notifyTripScheduled = async ({ bus_id, route_id, driver_id, conductor_id, trip_number, departure_time }) => {
+  const [bus, route, driver, conductor] = await Promise.all([
+    BusModel.findByPk(bus_id),
+    Route.findByPk(route_id),
+    User.findByPk(driver_id),
+    User.findByPk(conductor_id),
+  ]);
+  const busLabel = bus?.bus_number ?? String(bus_id);
+  const routeLabel = route ? `${route.origin} → ${route.destination}` : "";
+
+  for (const user of [driver, conductor]) {
+    if (!user) continue;
+    notify(
+      sendTripScheduledEmail({
+        to: user.email,
+        name: fullName(user),
+        tripNumber: trip_number,
+        busLabel,
+        routeLabel,
+        departureTime: departure_time,
+      }),
+    );
+  }
+};
+
 // POST /api/buses/trips
 const createTrip = async (req, res) => {
   const {
@@ -170,6 +243,9 @@ const createTrip = async (req, res) => {
     departure_time,
     status: "scheduled",
   });
+
+  notify(notifyTripScheduled({ bus_id, route_id, driver_id, conductor_id, trip_number, departure_time }));
+
   return res.status(201).json(trip);
 };
 
@@ -217,6 +293,37 @@ const createTripsBulk = async (req, res) => {
     });
     created.push(trip);
   }
+
+  notify(
+    (async () => {
+      const [bus, driver, conductor, routes] = await Promise.all([
+        BusModel.findByPk(bus_id),
+        User.findByPk(driver_id),
+        User.findByPk(conductor_id),
+        Route.findAll({ where: { id: created.map((t) => t.route_id) } }),
+      ]);
+      const busLabel = bus?.bus_number ?? String(bus_id);
+      const routeById = new Map(routes.map((r) => [r.id, `${r.origin} → ${r.destination}`]));
+      const tripSummaries = created.map((t) => ({
+        tripNumber: t.trip_number,
+        routeLabel: routeById.get(t.route_id) ?? "",
+        departureTime: t.departure_time,
+      }));
+
+      for (const user of [driver, conductor]) {
+        if (!user) continue;
+        notify(
+          sendTripsScheduledSummaryEmail({
+            to: user.email,
+            name: fullName(user),
+            busLabel,
+            date,
+            trips: tripSummaries,
+          }),
+        );
+      }
+    })(),
+  );
 
   return res.status(201).json(created);
 };

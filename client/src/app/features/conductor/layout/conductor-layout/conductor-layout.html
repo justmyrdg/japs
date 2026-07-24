@@ -71,53 +71,116 @@
     >
       <h1 class="text-base font-semibold text-gray-800">Conductor Portal</h1>
 
-      <!-- Desktop: name -->
-      <div class="hidden md:flex items-center gap-2 text-sm text-gray-500">
-        <i class="pi pi-user text-[#1E5AAA]"></i>
-        <span>{{ user?.first_name }} {{ user?.last_name }}</span>
-      </div>
-
-      <!-- Mobile: avatar dropdown -->
-      <div class="md:hidden relative">
-        <button
-          (click)="toggleUserMenu()"
-          class="flex items-center gap-1.5 p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-          aria-label="User menu"
-        >
-          <div
-            class="w-8 h-8 rounded-full bg-[#1E5AAA] text-white flex items-center justify-center text-sm font-bold shrink-0"
+      <div class="flex items-center gap-2 md:gap-3">
+        <!-- Printer / Bluetooth connection -->
+        <div class="relative">
+          <button
+            (click)="onPrinterButtonClick()"
+            [disabled]="connectingPrinter()"
+            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+            [class.bg-green-50]="isPrinterConnected()"
+            [class.text-green-700]="isPrinterConnected()"
+            [class.bg-gray-100]="!isPrinterConnected()"
+            [class.text-gray-500]="!isPrinterConnected()"
+            [attr.aria-label]="
+              isPrinterConnected() ? 'Printer connected — ' + printerDeviceName() : 'Connect printer'
+            "
           >
-            {{ (user?.first_name?.[0] ?? '') + (user?.last_name?.[0] ?? '') }}
-          </div>
-          <i
-            class="pi text-xs text-gray-400"
-            [class.pi-angle-down]="!userMenuOpen()"
-            [class.pi-angle-up]="userMenuOpen()"
-          ></i>
-        </button>
+            <i class="pi pi-print text-sm"></i>
+            <span class="hidden sm:inline">
+              {{
+                connectingPrinter()
+                  ? 'Connecting…'
+                  : isPrinterConnected()
+                    ? printerDeviceName()
+                    : 'Connect Printer'
+              }}
+            </span>
+            @if (isPrinterConnected() && printerBatteryLevel() !== null) {
+              <span class="hidden sm:inline font-bold {{ printerBatteryColorClass() }}">
+                {{ printerBatteryLevel() }}%
+              </span>
+            }
+            <span
+              class="w-1.5 h-1.5 rounded-full shrink-0"
+              [class.bg-green-500]="isPrinterConnected()"
+              [class.bg-gray-400]="!isPrinterConnected()"
+            ></span>
+          </button>
 
-        @if (userMenuOpen()) {
-          <div class="fixed inset-0 z-40" (click)="closeUserMenu()"></div>
-          <div
-            class="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-lg border border-gray-100 z-50 overflow-hidden"
-          >
-            <div class="px-4 py-3 border-b border-gray-100 bg-gray-50">
-              <p class="text-sm font-bold text-gray-800 truncate">
-                {{ user?.first_name }} {{ user?.last_name }}
-              </p>
-              <p class="text-xs text-gray-400 capitalize mt-0.5">
-                {{ user?.role?.replaceAll('_', ' ') }}
-              </p>
-            </div>
-            <button
-              (click)="logout()"
-              class="flex items-center gap-3 w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+          @if (printerMenuOpen()) {
+            <div class="fixed inset-0 z-40" (click)="closePrinterMenu()"></div>
+            <div
+              class="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 z-50 overflow-hidden"
             >
-              <i class="pi pi-sign-out text-base"></i>
-              <span>Logout</span>
-            </button>
-          </div>
-        }
+              <div class="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <p class="text-xs text-gray-400">Connected to</p>
+                <p class="text-sm font-bold text-gray-800 truncate">{{ printerDeviceName() }}</p>
+                @if (printerBatteryLevel() !== null) {
+                  <p class="text-xs font-semibold mt-1 {{ printerBatteryColorClass() }}">
+                    Battery: {{ printerBatteryLevel() }}%
+                  </p>
+                }
+              </div>
+              <button
+                (click)="disconnectPrinter()"
+                class="flex items-center gap-3 w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+              >
+                <i class="pi pi-times-circle text-base"></i>
+                <span>Disconnect</span>
+              </button>
+            </div>
+          }
+        </div>
+
+        <!-- Desktop: name -->
+        <div class="hidden md:flex items-center gap-2 text-sm text-gray-500">
+          <i class="pi pi-user text-[#1E5AAA]"></i>
+          <span>{{ user?.first_name }} {{ user?.last_name }}</span>
+        </div>
+
+        <!-- Mobile: avatar dropdown -->
+        <div class="md:hidden relative">
+          <button
+            (click)="toggleUserMenu()"
+            class="flex items-center gap-1.5 p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+            aria-label="User menu"
+          >
+            <div
+              class="w-8 h-8 rounded-full bg-[#1E5AAA] text-white flex items-center justify-center text-sm font-bold shrink-0"
+            >
+              {{ (user?.first_name?.[0] ?? '') + (user?.last_name?.[0] ?? '') }}
+            </div>
+            <i
+              class="pi text-xs text-gray-400"
+              [class.pi-angle-down]="!userMenuOpen()"
+              [class.pi-angle-up]="userMenuOpen()"
+            ></i>
+          </button>
+
+          @if (userMenuOpen()) {
+            <div class="fixed inset-0 z-40" (click)="closeUserMenu()"></div>
+            <div
+              class="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-lg border border-gray-100 z-50 overflow-hidden"
+            >
+              <div class="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <p class="text-sm font-bold text-gray-800 truncate">
+                  {{ user?.first_name }} {{ user?.last_name }}
+                </p>
+                <p class="text-xs text-gray-400 capitalize mt-0.5">
+                  {{ user?.role?.replaceAll('_', ' ') }}
+                </p>
+              </div>
+              <button
+                (click)="logout()"
+                class="flex items-center gap-3 w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+              >
+                <i class="pi pi-sign-out text-base"></i>
+                <span>Logout</span>
+              </button>
+            </div>
+          }
+        </div>
       </div>
     </header>
 

@@ -127,7 +127,7 @@
             >
           </div>
           <p class="text-[10px] text-gray-400 mt-1">
-            Calculated automatically based on distance, minimum fare, and category multiplier.
+            Calculated automatically based on distance, minimum fare, and category discount.
           </p>
         </div>
 
@@ -255,10 +255,12 @@
 
       <!-- Receipt Content -->
       <div
-        class="bg-white p-6 font-mono text-xs text-black space-y-4 max-h-[70vh] overflow-y-auto print:max-h-none print:overflow-visible"
+        #receiptContent
+        class="bg-white p-4 font-mono text-xs text-black space-y-2 max-h-[70vh] overflow-y-auto print:max-h-none print:overflow-visible"
       >
         <!-- Store Header -->
         <div class="text-center space-y-1">
+          <img src="assets/images/JAPS (black).png" alt="JAPS" class="h-8 mx-auto" />
           <h4 class="text-sm font-bold tracking-wider">JAPS TRANSIT</h4>
           <p class="text-[10px]">Bus Operations & Ticketing</p>
           <p class="text-[10px] text-gray-500">
@@ -266,7 +268,7 @@
           </p>
         </div>
 
-        <div class="border-t border-dashed border-gray-300 my-2"></div>
+        <div class="border-t border-dashed border-gray-300 my-1"></div>
 
         <!-- Ticket Number and Metadata -->
         <div class="space-y-1.5">
@@ -291,7 +293,7 @@
           </div>
         </div>
 
-        <div class="border-t border-dashed border-gray-300 my-2"></div>
+        <div class="border-t border-dashed border-gray-300 my-1"></div>
 
         <!-- Fare details -->
         <div class="space-y-2">
@@ -303,25 +305,23 @@
             <span class="capitalize">Category ({{ lastPrintedTicket()?.category }}):</span>
             <span>₱{{ lastPrintedTicket()?.fare | number: '1.2-2' }}</span>
           </div>
+          @if (lastPrintedTicket()?.discountPercent > 0) {
+            <div class="flex justify-between text-green-600">
+              <span>Discount:</span>
+              <span>{{ lastPrintedTicket()?.discountPercent }}% off</span>
+            </div>
+          }
           <div class="flex justify-between font-bold text-sm pt-1.5 border-t border-gray-100">
             <span>TOTAL AMOUNT:</span>
             <span>₱{{ lastPrintedTicket()?.fare | number: '1.2-2' }}</span>
           </div>
         </div>
 
-        <div class="border-t border-dashed border-gray-300 my-2"></div>
+        <div class="border-t border-dashed border-gray-300 my-1"></div>
 
-        <!-- Barcode representation -->
-        <div class="flex flex-col items-center justify-center py-2 space-y-1">
-          <!-- Mock Barcode Lines -->
-          <div class="h-10 w-44 flex items-center justify-between bg-black/5 opacity-80">
-            @for (
-              line of [1, 2, 3, 4, 3, 2, 1, 4, 3, 2, 1, 2, 3, 4, 1, 2, 3, 4, 3, 2, 1, 4];
-              track $index
-            ) {
-              <div class="h-full bg-black" [style.width.px]="line"></div>
-            }
-          </div>
+        <!-- Ticket validation code (kept as plain text — a solid-black barcode
+             graphic here would add printed area/data for little payoff) -->
+        <div class="flex items-center justify-center py-1">
           <span class="text-[9px] text-gray-500 font-semibold tracking-widest"
             >JAPS-{{ lastPrintedTicket()?.ticketNumber }}</span
           >
@@ -331,6 +331,10 @@
           <p>Thank you for riding JAPS Transit!</p>
           <p class="font-bold text-[8px] uppercase mt-1">Please keep this ticket for validation</p>
         </div>
+
+        <!-- Trailing blank space — gives room to cut the paper without clipping
+             the text above it. -->
+        <div class="h-8"></div>
       </div>
 
       <!-- Action Footer -->

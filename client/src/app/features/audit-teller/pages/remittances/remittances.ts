@@ -16,7 +16,7 @@ interface Remittance {
   net_collection: number;
   status: 'submitted' | 'approved' | 'rejected';
   submitted_at: string;
-  reviewed_at: string | null;
+  approved_at: string | null;
   conductor: {
     id: number;
     first_name: string;
@@ -34,6 +34,7 @@ interface Remittance {
     bus_number: string;
     plate_number: string;
   };
+  approver: { id: number; first_name: string; last_name: string } | null;
 }
 
 type SortField = 'date' | 'submitted_at' | 'net_collection' | 'status';

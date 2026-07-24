@@ -10,6 +10,9 @@ const {
   RemittanceExpense,
   sequelize,
 } = require("../models");
+const { fullName, sendRemittanceSubmittedEmail } = require("../config/mailer");
+
+const notify = (promise) => promise.catch((err) => console.error("Email notification failed:", err));
 
 // GET /api/conductor/trips
 // Returns completed unremitted trips for a bus on a date (for remittance submission)
@@ -406,6 +409,12 @@ const submitRemittance = async (req, res) => {
         .json({ message: "No valid trips found for remittance." });
     }
 
+    // A prior rejected remittance for the same bus/date/conductor means this is a resubmission.
+    const priorRejected = await Remittance.findOne({
+      where: { bus_id, conductor_id: conductorId, date, status: "rejected" },
+      transaction,
+    });
+
     const grossIncome = trips.reduce(
       (sum, t) => sum + Number(t.grand_total),
       0,
@@ -470,6 +479,27 @@ const submitRemittance = async (req, res) => {
     }
 
     await transaction.commit();
+
+    notify(
+      (async () => {
+        const [bus, conductor, reviewers] = await Promise.all([
+          BusModel.findByPk(bus_id),
+          User.findByPk(conductorId),
+          User.findAll({ where: { role: ["owner", "audit_teller"], is_active: true } }),
+        ]);
+        for (const reviewer of reviewers) {
+          await sendRemittanceSubmittedEmail({
+            to: reviewer.email,
+            conductorName: conductor ? fullName(conductor) : "A conductor",
+            busLabel: bus?.bus_number ?? String(bus_id),
+            date,
+            netCollection,
+            isResubmission: !!priorRejected,
+          });
+        }
+      })(),
+    );
+
     return res.status(201).json(remittance);
   } catch (error) {
     await transaction.rollback();

@@ -20,30 +20,30 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 0,
       },
-      regular_multiplier: {
+      regular_discount_percent: {
         type: DataTypes.DECIMAL(6, 2),
         allowNull: false,
-        defaultValue: 100,
+        defaultValue: 0,
       },
-      student_multiplier: {
+      student_discount_percent: {
         type: DataTypes.DECIMAL(6, 2),
         allowNull: false,
-        defaultValue: 80,
+        defaultValue: 20,
       },
-      senior_citizen_multiplier: {
+      senior_citizen_discount_percent: {
         type: DataTypes.DECIMAL(6, 2),
         allowNull: false,
-        defaultValue: 80,
+        defaultValue: 20,
       },
-      pwd_multiplier: {
+      pwd_discount_percent: {
         type: DataTypes.DECIMAL(6, 2),
         allowNull: false,
-        defaultValue: 80,
+        defaultValue: 20,
       },
-      discounted_multiplier: {
+      discounted_discount_percent: {
         type: DataTypes.DECIMAL(6, 2),
         allowNull: false,
-        defaultValue: 80,
+        defaultValue: 20,
       },
       effective_date: { type: DataTypes.DATEONLY, allowNull: false },
     },

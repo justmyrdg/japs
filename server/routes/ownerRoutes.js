@@ -223,6 +223,11 @@ router.get("/remittances", async (req, res) => {
           as: "conductor",
           attributes: ["id", "first_name", "last_name", "employee_id"],
         },
+        {
+          model: User,
+          as: "approver",
+          attributes: ["id", "first_name", "last_name"],
+        },
       ],
       order: [["submitted_at", "DESC"]],
     });

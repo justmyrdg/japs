@@ -26,6 +26,18 @@ export class PrinterSetupPage {
     return this.printerSetup.deviceName();
   }
 
+  batteryLevel(): number | null {
+    return this.printerSetup.batteryLevel();
+  }
+
+  batteryColorClass(): string {
+    const level = this.batteryLevel();
+    if (level === null) return '';
+    if (level <= 20) return 'text-red-600';
+    if (level <= 50) return 'text-amber-600';
+    return 'text-green-600';
+  }
+
   isConfigured(): boolean {
     return this.printerSetup.isConfigured();
   }
@@ -46,20 +58,8 @@ export class PrinterSetupPage {
     this.showTroubleshooting.set(false);
     this.printing.set(true);
 
-    const sampleText = this.printerSetup.buildReceiptText({
-      ticketNumber: 'TEST',
-      busNumber: 'SAMPLE-BUS',
-      plateNumber: 'SAMPLE-000',
-      origin: 'Test Origin',
-      destination: 'Test Destination',
-      category: 'regular',
-      distance: 1,
-      fare: 0,
-      date: new Date(),
-    });
-
     try {
-      await this.printerSetup.sendToPrinter(sampleText);
+      await this.printerSetup.printSampleTicketImage();
       this.showConfirmation.set(true);
     } catch (err) {
       this.connectError.set(err instanceof Error ? err.message : 'Failed to send test print.');
