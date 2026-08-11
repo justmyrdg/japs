@@ -12,22 +12,27 @@ module.exports = (sequelize) => {
       remittance_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
+        references: { model: "remittances", key: "id" },
       },
       bus_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
+        references: { model: "buses", key: "id" },
       },
       route_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
+        references: { model: "routes", key: "id" },
       },
       driver_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
+        references: { model: "users", key: "id" },
       },
       conductor_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
+        references: { model: "users", key: "id" },
       },
       trip_number: {
         type: DataTypes.INTEGER,

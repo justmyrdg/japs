@@ -39,7 +39,21 @@ interface RemittanceDetail {
     ticket_number_start: string | null;
     ticket_number_end: string | null;
     Route: { origin: string; destination: string } | null;
+    Tickets: TicketRecord[];
   }[];
+}
+
+interface TicketRecord {
+  id: number;
+  ticket_number: string;
+  category: string;
+  boarding_point: string | null;
+  boarding_km: number | null;
+  dropping_point: string | null;
+  dropping_km: number | null;
+  distance_km: number;
+  fare: number;
+  issued_at: string;
 }
 
 interface EditForm {
@@ -82,6 +96,8 @@ export class RemittanceReviewPage implements OnInit {
   private original: EditForm = this.emptyForm();
 
   changedFields = signal<Set<string>>(new Set());
+
+  expandedTripId = signal<number | null>(null);
 
   // recalculated derived totals for live preview
   previewNetGross = computed(
@@ -270,5 +286,20 @@ export class RemittanceReviewPage implements OnInit {
 
   onRejectReasonChange(e: Event): void {
     this.rejectReason.set((e.target as HTMLTextAreaElement).value);
+  }
+
+  toggleTripTickets(tripId: number): void {
+    this.expandedTripId.update((id) => (id === tripId ? null : tripId));
+  }
+
+  getCategoryLabel(cat: string): string {
+    const labels: Record<string, string> = {
+      regular: 'Regular',
+      student: 'Student',
+      senior_citizen: 'Senior Citizen',
+      pwd: 'PWD',
+      discounted: 'Discounted',
+    };
+    return labels[cat] ?? cat;
   }
 }

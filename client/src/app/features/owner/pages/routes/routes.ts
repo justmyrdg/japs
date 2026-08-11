@@ -1,5 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AlertService } from '../../../../core/services/alert.service';
 import { environment } from '../../../../../environments/environment';
@@ -18,6 +19,12 @@ export interface FareRate {
   category: string;
   rate: number;
   effective_date: string;
+}
+
+export interface RouteStopPoint {
+  id?: number;
+  name: string;
+  km_from_origin: number;
 }
 
 @Component({
@@ -78,10 +85,29 @@ export class Routes implements OnInit {
   editingRoute = signal<AppRoute | null>(null);
   deletingRoute = signal<AppRoute | null>(null);
 
+  // ── Stops ─────────────────────────────────────────────────────────────
+  expandedRouteId = signal<number | null>(null);
+  routeStops = signal<RouteStopPoint[]>([]);
+  loadingStops = signal(false);
+
+  showStopModal = signal(false);
+  editingStop = signal<RouteStopPoint | null>(null);
+  stopForm: FormGroup = this.fb.group({
+    name: ['', Validators.required],
+    km_from_origin: [null, [Validators.required, Validators.min(0.01)]],
+  });
+
+  // Stops queued while creating a brand-new route (no route_id to POST against yet) —
+  // created right after the route itself on save().
+  pendingStops = signal<RouteStopPoint[]>([]);
+  newStopName = signal('');
+  newStopKm = signal<number | null>(null);
+  pendingStopError = signal<string | null>(null);
+
   form: FormGroup = this.fb.group({
     origin: ['', Validators.required],
     destination: ['', Validators.required],
-    distance_km: [null],
+    distance_km: [null, [Validators.required, Validators.min(0.01)]],
   });
 
   ngOnInit(): void {
@@ -115,6 +141,10 @@ export class Routes implements OnInit {
   openAdd(): void {
     this.editingRoute.set(null);
     this.form.reset();
+    this.pendingStops.set([]);
+    this.newStopName.set('');
+    this.newStopKm.set(null);
+    this.pendingStopError.set(null);
     this.showModal.set(true);
   }
 
@@ -128,20 +158,89 @@ export class Routes implements OnInit {
     this.showModal.set(false);
   }
 
+  onNewStopNameInput(e: Event): void {
+    this.newStopName.set((e.target as HTMLInputElement).value);
+  }
+
+  onNewStopKmInput(e: Event): void {
+    const val = (e.target as HTMLInputElement).value;
+    this.newStopKm.set(val === '' ? null : Number(val));
+  }
+
+  addPendingStop(): void {
+    const name = this.newStopName().trim();
+    const km = this.newStopKm();
+    const distanceKm = Number(this.form.get('distance_km')?.value);
+
+    if (!name || km === null) {
+      this.pendingStopError.set('Enter a stop name and distance.');
+      return;
+    }
+    if (!(km > 0) || (distanceKm > 0 && km >= distanceKm)) {
+      this.pendingStopError.set(
+        distanceKm > 0
+          ? `Distance must be between 0 and ${distanceKm} km.`
+          : 'Distance must be greater than 0.',
+      );
+      return;
+    }
+    if (this.pendingStops().some((s) => Number(s.km_from_origin) === km)) {
+      this.pendingStopError.set('A stop already exists at this distance from origin.');
+      return;
+    }
+
+    this.pendingStops.update((list) =>
+      [...list, { name, km_from_origin: km }].sort((a, b) => a.km_from_origin - b.km_from_origin),
+    );
+    this.newStopName.set('');
+    this.newStopKm.set(null);
+    this.pendingStopError.set(null);
+  }
+
+  removePendingStop(stop: RouteStopPoint): void {
+    this.pendingStops.update((list) => list.filter((s) => s !== stop));
+  }
+
   save(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
     const editing = this.editingRoute();
-    const req = editing
-      ? this.http.put<AppRoute>(`${this.API}/${editing.id}`, this.form.value, {
-          withCredentials: true,
-        })
-      : this.http.post<AppRoute>(this.API, this.form.value, { withCredentials: true });
-    req.subscribe({
-      next: () => {
-        this.alertService.success('Saved', editing ? 'Route updated.' : 'Route created.');
+
+    if (editing) {
+      this.http
+        .put<AppRoute>(`${this.API}/${editing.id}`, this.form.value, { withCredentials: true })
+        .subscribe({
+          next: () => {
+            this.alertService.success('Saved', 'Route updated.');
+            this.closeModal();
+            this.loadRoutes();
+          },
+          error: (err) =>
+            this.alertService.error('Error', err.error?.message ?? 'Something went wrong.'),
+        });
+      return;
+    }
+
+    this.http.post<AppRoute>(this.API, this.form.value, { withCredentials: true }).subscribe({
+      next: async (route) => {
+        let stopFailure: string | null = null;
+        for (const stop of this.pendingStops()) {
+          try {
+            await firstValueFrom(
+              this.http.post(`${this.API}/${route.id}/stops`, stop, { withCredentials: true }),
+            );
+          } catch (err: any) {
+            stopFailure = `"${stop.name}" failed to save: ${err.error?.message ?? 'Something went wrong.'}`;
+            break;
+          }
+        }
+        if (stopFailure) {
+          this.alertService.error('Route created, but a stop failed', stopFailure);
+        } else {
+          this.alertService.success('Saved', 'Route created.');
+        }
         this.closeModal();
         this.loadRoutes();
       },
@@ -169,6 +268,85 @@ export class Routes implements OnInit {
       },
       error: (err) =>
         this.alertService.error('Error', err.error?.message ?? 'Could not delete route.'),
+    });
+  }
+
+  toggleStops(route: AppRoute): void {
+    if (this.expandedRouteId() === route.id) {
+      this.expandedRouteId.set(null);
+      return;
+    }
+    this.expandedRouteId.set(route.id);
+    this.loadStops(route.id);
+  }
+
+  loadStops(routeId: number): void {
+    this.loadingStops.set(true);
+    this.http
+      .get<RouteStopPoint[]>(`${this.API}/${routeId}/stops`, { withCredentials: true })
+      .subscribe({
+        next: (data) => {
+          this.routeStops.set(data);
+          this.loadingStops.set(false);
+        },
+        error: () => this.loadingStops.set(false),
+      });
+  }
+
+  openAddStop(): void {
+    this.editingStop.set(null);
+    this.stopForm.reset();
+    this.showStopModal.set(true);
+  }
+
+  openEditStop(stop: RouteStopPoint): void {
+    this.editingStop.set(stop);
+    this.stopForm.patchValue(stop);
+    this.showStopModal.set(true);
+  }
+
+  closeStopModal(): void {
+    this.showStopModal.set(false);
+  }
+
+  saveStop(): void {
+    if (this.stopForm.invalid) {
+      this.stopForm.markAllAsTouched();
+      return;
+    }
+    const routeId = this.expandedRouteId();
+    if (!routeId) return;
+    const editing = this.editingStop();
+    const req = editing
+      ? this.http.put<RouteStopPoint>(
+          `${this.API}/${routeId}/stops/${editing.id}`,
+          this.stopForm.value,
+          { withCredentials: true },
+        )
+      : this.http.post<RouteStopPoint>(`${this.API}/${routeId}/stops`, this.stopForm.value, {
+          withCredentials: true,
+        });
+    req.subscribe({
+      next: () => {
+        this.alertService.success('Saved', editing ? 'Stop updated.' : 'Stop added.');
+        this.closeStopModal();
+        this.loadStops(routeId);
+      },
+      error: (err) =>
+        this.alertService.error('Error', err.error?.message ?? 'Something went wrong.'),
+    });
+  }
+
+  deleteStop(stop: RouteStopPoint): void {
+    const routeId = this.expandedRouteId();
+    if (!routeId || !stop.id) return;
+    this.http.delete(`${this.API}/${routeId}/stops/${stop.id}`, { withCredentials: true }).subscribe({
+      next: () => {
+        this.alertService.success('Deleted', 'Stop removed.');
+        this.loadStops(routeId);
+      },
+      error: (err) =>
+        this.alertService.error('Error', err.error?.message ?? 'Could not delete stop.'),
     });
   }
 

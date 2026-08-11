@@ -14,9 +14,11 @@ const {
 } = require("../models");
 
 const router = express.Router();
-router.use(authenticate, authorize("owner"));
+router.use(authenticate, authorize("owner", "secretary"));
 
 // GET /api/owner/dashboard
+// Optional ?from=YYYY-MM-DD&to=YYYY-MM-DD — filters the range-based KPIs and
+// the daily passenger chart. Defaults to the current month when omitted.
 router.get("/dashboard", async (req, res) => {
   try {
     const now = new Date();
@@ -24,57 +26,60 @@ router.get("/dashboard", async (req, res) => {
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(now);
     todayEnd.setHours(23, 59, 59, 999);
-    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      0,
-      23,
-      59,
-      59,
-      999,
-    );
 
-    // ── KPI: Net gross this month ──────────────────────────────────────────
-    const netGrossThisMonth =
+    const { from, to } = req.query;
+    let rangeStart, rangeEnd;
+    if (from && to && !isNaN(Date.parse(from)) && !isNaN(Date.parse(to))) {
+      rangeStart = new Date(`${from}T00:00:00`);
+      rangeEnd = new Date(`${to}T23:59:59.999`);
+    } else {
+      rangeStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      rangeEnd = now;
+    }
+    // Comparison window: the immediately preceding period of equal length.
+    const rangeMs = rangeEnd.getTime() - rangeStart.getTime();
+    const prevRangeEnd = new Date(rangeStart.getTime() - 1);
+    const prevRangeStart = new Date(prevRangeEnd.getTime() - rangeMs);
+
+    // ── KPI: Net gross within the selected range ───────────────────────────
+    const netGrossInRange =
       (await Remittance.sum("net_gross", {
         where: {
           status: "approved",
-          submitted_at: { [Op.gte]: thisMonthStart },
+          submitted_at: { [Op.between]: [rangeStart, rangeEnd] },
         },
       })) || 0;
 
     // ── KPI: Passenger counts via raw SQL ─────────────────────────────────
-    const [pcThisMonth] = await sequelize.query(
-      `SELECT COALESCE(SUM(pc.count),0) AS total
-       FROM passenger_counts pc
-       JOIN trips t ON t.id = pc.trip_id
-       WHERE t.departure_time >= :start`,
-      {
-        replacements: { start: thisMonthStart },
-        type: sequelize.QueryTypes.SELECT,
-      },
-    );
-    const passengerCountThisMonth = Number(pcThisMonth.total) || 0;
-
-    const [pcLastMonth] = await sequelize.query(
+    const [pcInRange] = await sequelize.query(
       `SELECT COALESCE(SUM(pc.count),0) AS total
        FROM passenger_counts pc
        JOIN trips t ON t.id = pc.trip_id
        WHERE t.departure_time BETWEEN :start AND :end`,
       {
-        replacements: { start: lastMonthStart, end: lastMonthEnd },
+        replacements: { start: rangeStart, end: rangeEnd },
         type: sequelize.QueryTypes.SELECT,
       },
     );
-    const passengerCountLastMonth = Number(pcLastMonth.total) || 0;
+    const passengerCountInRange = Number(pcInRange.total) || 0;
+
+    const [pcPrevRange] = await sequelize.query(
+      `SELECT COALESCE(SUM(pc.count),0) AS total
+       FROM passenger_counts pc
+       JOIN trips t ON t.id = pc.trip_id
+       WHERE t.departure_time BETWEEN :start AND :end`,
+      {
+        replacements: { start: prevRangeStart, end: prevRangeEnd },
+        type: sequelize.QueryTypes.SELECT,
+      },
+    );
+    const passengerCountPrevRange = Number(pcPrevRange.total) || 0;
 
     const passengerGrowth =
-      passengerCountLastMonth > 0
+      passengerCountPrevRange > 0
         ? (
-            ((passengerCountThisMonth - passengerCountLastMonth) /
-              passengerCountLastMonth) *
+            ((passengerCountInRange - passengerCountPrevRange) /
+              passengerCountPrevRange) *
             100
           ).toFixed(1)
         : null;
@@ -101,19 +106,16 @@ router.get("/dashboard", async (req, res) => {
       where: { status: "submitted" },
     });
 
-    // ── Daily passenger volume – last 7 days (raw SQL) ────────────────────
-    const sevenDaysAgo = new Date(now);
-    sevenDaysAgo.setDate(now.getDate() - 6);
-    sevenDaysAgo.setHours(0, 0, 0, 0);
+    // ── Daily passenger volume within the selected range (raw SQL) ────────
     const dailyPassengersRaw = await sequelize.query(
       `SELECT t.departure_time::date AS date, COALESCE(SUM(pc.count),0) AS total
        FROM trips t
        LEFT JOIN passenger_counts pc ON pc.trip_id = t.id
-       WHERE t.departure_time >= :since
+       WHERE t.departure_time BETWEEN :start AND :end
        GROUP BY t.departure_time::date
        ORDER BY t.departure_time::date ASC`,
       {
-        replacements: { since: sevenDaysAgo },
+        replacements: { start: rangeStart, end: rangeEnd },
         type: sequelize.QueryTypes.SELECT,
       },
     );
@@ -184,9 +186,13 @@ router.get("/dashboard", async (req, res) => {
     );
 
     return res.json({
+      range: {
+        from: rangeStart.toISOString().split("T")[0],
+        to: rangeEnd.toISOString().split("T")[0],
+      },
       kpi: {
-        net_gross_this_month: netGrossThisMonth,
-        passenger_count_this_month: passengerCountThisMonth,
+        net_gross_in_range: netGrossInRange,
+        passenger_count_in_range: passengerCountInRange,
         passenger_growth_pct: passengerGrowth,
         bus_utilisation_rate: busUtilRate,
         total_buses: totalBuses,

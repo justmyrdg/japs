@@ -51,7 +51,7 @@
         </div>
       }
       <button
-        (click)="logout()"
+        (click)="confirmLogout()"
         class="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-white/10 transition-colors duration-150 text-sm text-white/80 hover:text-white cursor-pointer"
       >
         <i class="pi pi-sign-out text-base shrink-0"></i>
@@ -81,3 +81,14 @@
     </main>
   </div>
 </div>
+
+<app-confirm-modal
+  [open]="showLogoutConfirm()"
+  title="Log Out"
+  message="You'll need to sign in again to access the Audit Teller Portal. Continue?"
+  confirmText="Log Out"
+  cancelText="Cancel"
+  icon="pi-sign-out"
+  (confirm)="logout()"
+  (cancel)="cancelLogout()"
+/>

@@ -46,6 +46,11 @@ export interface PassengerCount {
   count: number;
 }
 
+export interface RouteStopPoint {
+  name: string;
+  km_from_origin: number;
+}
+
 @Component({
   selector: 'app-ticketing',
   imports: [ReactiveFormsModule, CurrencyPipe, DatePipe, DecimalPipe],
@@ -66,6 +71,7 @@ export class TicketingPage implements OnInit {
   selectedTripId = signal<number | null>(null);
   selectedTrip = computed(() => this.trips().find((t) => t.id === this.selectedTripId()) || null);
   fareSettings = signal<FareSettings | null>(null);
+  routeStops = signal<RouteStopPoint[]>([]);
 
   passengerCounts = signal<PassengerCount[]>([]);
   ticketForm: FormGroup;
@@ -79,7 +85,8 @@ export class TicketingPage implements OnInit {
   constructor() {
     this.ticketForm = this.fb.group({
       category: ['regular', Validators.required],
-      distance: [5, [Validators.required, Validators.min(0.1)]],
+      boarding_km: [null, Validators.required],
+      dropping_km: [null, Validators.required],
       fare: [0, [Validators.required, Validators.min(0)]],
     });
   }
@@ -96,13 +103,18 @@ export class TicketingPage implements OnInit {
       });
     });
 
-    // Auto-calculate fare when category or distance changes
+    // Auto-calculate fare when category or the selected stops change
     this.ticketForm.get('category')?.valueChanges.subscribe(() => {
-      console.log('Category changed to:', this.ticketForm.get('category')?.value);
       this.autoCalculateFare();
     });
-    this.ticketForm.get('distance')?.valueChanges.subscribe((val) => {
-      console.log('Distance changed to:', val);
+    this.ticketForm.get('boarding_km')?.valueChanges.subscribe((val) => {
+      const droppingKm = this.ticketForm.get('dropping_km')?.value;
+      if (droppingKm !== null && Number(droppingKm) === Number(val)) {
+        this.ticketForm.patchValue({ dropping_km: null }, { emitEvent: false });
+      }
+      this.autoCalculateFare();
+    });
+    this.ticketForm.get('dropping_km')?.valueChanges.subscribe(() => {
       this.autoCalculateFare();
     });
   }
@@ -138,7 +150,35 @@ export class TicketingPage implements OnInit {
   selectTrip(tripId: number): void {
     this.selectedTripId.set(tripId);
     this.loadPassengerCounts(tripId);
+    this.ticketForm.patchValue({ boarding_km: null, dropping_km: null }, { emitEvent: false });
+    const routeId = this.selectedTrip()?.Route?.id;
+    if (routeId) this.loadRouteStops(routeId);
     this.autoCalculateFare();
+  }
+
+  loadRouteStops(routeId: number): void {
+    this.http
+      .get<RouteStopPoint[]>(`${this.API}/routes/${routeId}/stops`, { withCredentials: true })
+      .subscribe({
+        next: (data) => this.routeStops.set(data),
+        error: () => this.alertService.error('Error', 'Failed to load route stops.'),
+      });
+  }
+
+  getDroppingOptions(): RouteStopPoint[] {
+    const boardingKm = this.ticketForm.get('boarding_km')?.value;
+    return this.routeStops().filter(
+      (s) => boardingKm === null || boardingKm === undefined || Number(s.km_from_origin) !== Number(boardingKm),
+    );
+  }
+
+  computeDistance(): number {
+    const boardingKm = this.ticketForm.get('boarding_km')?.value;
+    const droppingKm = this.ticketForm.get('dropping_km')?.value;
+    if (boardingKm === null || boardingKm === undefined || droppingKm === null || droppingKm === undefined) {
+      return 0;
+    }
+    return Math.abs(Number(droppingKm) - Number(boardingKm));
   }
 
   loadPassengerCounts(tripId: number): void {
@@ -153,18 +193,10 @@ export class TicketingPage implements OnInit {
 
   autoCalculateFare(): void {
     const settings = this.fareSettings();
-    if (!settings) {
-      console.log('No fare settings available yet');
-      return;
-    }
+    if (!settings) return;
 
-    const distanceValue = this.ticketForm.get('distance')?.value;
-    const distance = Number(distanceValue);
-
-    console.log('Starting fare calculation with distance:', distanceValue, '-> parsed:', distance);
-
-    if (!distanceValue || distance <= 0) {
-      console.log('Invalid distance, setting fare to 0');
+    const distance = this.computeDistance();
+    if (distance <= 0) {
       this.ticketForm.patchValue({ fare: 0 }, { emitEvent: false });
       return;
     }
@@ -173,33 +205,13 @@ export class TicketingPage implements OnInit {
     const baseDistanceKm = Number(settings.base_distance_km);
     const ratePerKm = Number(settings.rate_per_km);
 
-    console.log('Fare settings:', {
-      minFare,
-      baseDistanceKm,
-      ratePerKm,
-      allSettings: settings,
-    });
-
-    // Calculate base fare: if distance <= base_distance_km, use min_fare, otherwise add per-km
     const baseFare =
       distance <= baseDistanceKm ? minFare : minFare + (distance - baseDistanceKm) * ratePerKm;
 
-    console.log(
-      'Base fare calculated:',
-      baseFare,
-      `(${distance <= baseDistanceKm ? 'minimum fare' : 'minimum + extra km'})`,
-    );
-
-    // Apply category discount percentage
     const category = this.ticketForm.get('category')?.value;
     const discountPercent = this.getDiscountPercent(category, settings);
 
-    console.log('Category:', category, 'Discount:', discountPercent, '%');
-
     const finalFare = parseFloat((baseFare * (1 - discountPercent / 100)).toFixed(2));
-    console.log('FINAL FARE:', finalFare);
-
-    // Patch without emitting event to prevent infinite loop
     this.ticketForm.patchValue({ fare: finalFare }, { emitEvent: false });
   }
 
@@ -216,8 +228,8 @@ export class TicketingPage implements OnInit {
     const formValue = this.ticketForm.value;
     const payload = {
       category: formValue.category,
-      distance: formValue.distance,
-      fare: formValue.fare,
+      boarding_km: formValue.boarding_km,
+      dropping_km: formValue.dropping_km,
     };
 
     this.http
@@ -228,8 +240,10 @@ export class TicketingPage implements OnInit {
           const printed = {
             ticketNumber: res.ticket?.ticket_number,
             category: payload.category,
-            distance: payload.distance,
-            fare: payload.fare,
+            boardingPoint: res.ticket?.boarding_point,
+            droppingPoint: res.ticket?.dropping_point,
+            distance: res.ticket?.distance_km,
+            fare: res.ticket?.fare,
             discountPercent: this.getDiscountPercent(payload.category),
             date: new Date(),
             route: this.selectedTrip()?.Route,

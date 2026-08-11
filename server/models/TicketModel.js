@@ -25,6 +25,22 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: "regular",
       },
+      boarding_point: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      boarding_km: {
+        type: DataTypes.DECIMAL(8, 2),
+        allowNull: true,
+      },
+      dropping_point: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      dropping_km: {
+        type: DataTypes.DECIMAL(8, 2),
+        allowNull: true,
+      },
       distance_km: {
         type: DataTypes.DECIMAL(6, 2),
         allowNull: false,

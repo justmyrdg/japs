@@ -64,12 +64,25 @@ describe('TicketingPage', () => {
         Route: { id: 1, origin: 'Manila', destination: 'Baguio', distance_km: 250 },
       },
     ]);
-    component.ticketForm.setValue({ category: 'regular', distance: 5, fare: 20 });
+    component.ticketForm.setValue({
+      category: 'regular',
+      boarding_km: 0,
+      dropping_km: 5,
+      fare: 20,
+    });
 
     component.printTicketSubmit();
 
     const req = httpMock.expectOne(`${environment.apiUrl}/api/conductor/trips/1/tickets`);
-    req.flush({ ticket: { ticket_number: 7 } });
+    req.flush({
+      ticket: {
+        ticket_number: 7,
+        boarding_point: 'Manila',
+        dropping_point: 'Baguio',
+        distance_km: 5,
+        fare: 20,
+      },
+    });
 
     // Let the modal render so the receipt content element exists before the
     // component's own double-rAF wait resolves and reads it.

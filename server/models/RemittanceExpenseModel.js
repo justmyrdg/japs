@@ -12,6 +12,7 @@ module.exports = (sequelize) => {
       remittance_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
+        references: { model: 'remittances', key: 'id' },
       },
       expense_type: {
         type: DataTypes.ENUM(

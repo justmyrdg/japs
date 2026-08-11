@@ -12,6 +12,7 @@ module.exports = (sequelize) => {
       route_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
+        references: { model: 'routes', key: 'id' },
       },
       category: {
         type: DataTypes.ENUM('regular', 'student', 'senior_citizen', 'pwd', 'discounted'),

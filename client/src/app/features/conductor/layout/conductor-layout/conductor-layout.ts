@@ -3,6 +3,7 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 import { AuthService } from '../../../../core/services/auth.service';
 import { AlertService } from '../../../../core/services/alert.service';
 import { PrinterSetupService } from '../../../../core/services/printer-setup.service';
+import { ConfirmModal } from '../../../../shared/components/confirm-modal/confirm-modal';
 
 interface NavItem {
   label: string;
@@ -13,7 +14,7 @@ interface NavItem {
 
 @Component({
   selector: 'app-conductor-layout',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, ConfirmModal],
   templateUrl: './conductor-layout.html',
   styleUrl: './conductor-layout.css',
 })
@@ -28,6 +29,7 @@ export class ConductorLayout {
   userMenuOpen = signal(false);
   printerMenuOpen = signal(false);
   connectingPrinter = signal(false);
+  showLogoutConfirm = signal(false);
 
   navItems: NavItem[] = [
     { label: 'My Trips', shortLabel: 'Trips', icon: 'pi-list', route: 'trips' },
@@ -106,8 +108,17 @@ export class ConductorLayout {
     this.alertService.info('Printer Disconnected', 'The Bluetooth printer has been disconnected.');
   }
 
-  logout(): void {
+  confirmLogout(): void {
     this.closeUserMenu();
+    this.showLogoutConfirm.set(true);
+  }
+
+  cancelLogout(): void {
+    this.showLogoutConfirm.set(false);
+  }
+
+  logout(): void {
+    this.showLogoutConfirm.set(false);
     this.auth.logout().subscribe({
       next: () => this.router.navigate(['/login']),
       error: () => this.router.navigate(['/login']),

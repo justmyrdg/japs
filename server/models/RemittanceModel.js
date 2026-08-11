@@ -12,14 +12,17 @@ module.exports = (sequelize) => {
       bus_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
+        references: { model: "buses", key: "id" },
       },
       driver_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
+        references: { model: "users", key: "id" },
       },
       conductor_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
+        references: { model: "users", key: "id" },
       },
       date: {
         type: DataTypes.DATEONLY,
@@ -88,6 +91,7 @@ module.exports = (sequelize) => {
       approved_by: {
         type: DataTypes.INTEGER,
         allowNull: true,
+        references: { model: "users", key: "id" },
       },
       approved_at: {
         type: DataTypes.DATE,

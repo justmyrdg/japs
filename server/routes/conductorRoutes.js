@@ -5,6 +5,7 @@ const {
   updateTripStatus,
   getTripPassengerCounts,
   savePassengerCounts,
+  getRouteStopsForConductor,
   printTicket,
   getTickets,
   submitRemittance,
@@ -18,6 +19,7 @@ router.get("/trips", getAssignedTrips);
 router.put("/trips/:id/status", updateTripStatus);
 router.get("/trips/:id/passenger-counts", getTripPassengerCounts);
 router.post("/trips/:id/passenger-counts", savePassengerCounts);
+router.get("/routes/:routeId/stops", getRouteStopsForConductor);
 router.post("/trips/:id/tickets", printTicket);
 router.get("/tickets", getTickets);
 router.get("/remittances", getRemittances);

@@ -84,32 +84,51 @@
           </div>
         </div>
 
-        <!-- Distance Input -->
+        <!-- Boarding Point -->
         <div>
           <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2"
-            >Distance (km) <span class="text-red-500">*</span></label
+            >Boarding Point <span class="text-red-500">*</span></label
           >
-          <div class="relative">
-            <i class="pi pi-map-marker absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            <input
-              formControlName="distance"
-              type="number"
-              step="0.1"
-              min="0"
-              placeholder="Enter distance in km"
-              class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm font-semibold"
-            />
-          </div>
+          <select
+            formControlName="boarding_km"
+            class="w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm font-semibold bg-white"
+          >
+            <option [ngValue]="null" disabled>— Select boarding point —</option>
+            @for (stop of routeStops(); track stop.km_from_origin) {
+              <option [ngValue]="stop.km_from_origin">{{ stop.name }} — {{ stop.km_from_origin }} km</option>
+            }
+          </select>
           @if (
-            ticketForm.get('distance')?.touched && ticketForm.get('distance')?.errors?.['required']
+            ticketForm.get('boarding_km')?.touched &&
+            ticketForm.get('boarding_km')?.errors?.['required']
           ) {
-            <p class="text-red-500 text-xs mt-1">Distance is required.</p>
+            <p class="text-red-500 text-xs mt-1">Boarding point is required.</p>
           }
-          @if (ticketForm.get('distance')?.touched && ticketForm.get('distance')?.errors?.['min']) {
-            <p class="text-red-500 text-xs mt-1">Distance must be at least 0.1 km.</p>
+        </div>
+
+        <!-- Dropping Point -->
+        <div>
+          <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2"
+            >Dropping Point <span class="text-red-500">*</span></label
+          >
+          <select
+            formControlName="dropping_km"
+            class="w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm font-semibold bg-white"
+          >
+            <option [ngValue]="null" disabled>— Select dropping point —</option>
+            @for (stop of getDroppingOptions(); track stop.km_from_origin) {
+              <option [ngValue]="stop.km_from_origin">{{ stop.name }} — {{ stop.km_from_origin }} km</option>
+            }
+          </select>
+          @if (
+            ticketForm.get('dropping_km')?.touched &&
+            ticketForm.get('dropping_km')?.errors?.['required']
+          ) {
+            <p class="text-red-500 text-xs mt-1">Dropping point is required.</p>
           }
           <p class="text-[10px] text-gray-400 mt-1">
-            Enter the actual distance traveled by the passenger. Fare is calculated automatically.
+            Distance ({{ computeDistance() }} km) and fare are calculated automatically from the
+            selected stops.
           </p>
         </div>
 
@@ -285,11 +304,11 @@
             <span>{{ lastPrintedTicket()?.bus?.plate_number }}</span>
           </div>
           <div class="flex justify-between">
-            <span>ROUTE:</span>
-            <span>{{ lastPrintedTicket()?.route?.origin }}</span>
+            <span>FROM:</span>
+            <span>{{ lastPrintedTicket()?.boardingPoint }}</span>
           </div>
           <div class="flex justify-end">
-            <span>TO: {{ lastPrintedTicket()?.route?.destination }}</span>
+            <span>TO: {{ lastPrintedTicket()?.droppingPoint }}</span>
           </div>
         </div>
 

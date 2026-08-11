@@ -12,14 +12,17 @@ module.exports = (sequelize) => {
       bus_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
+        references: { model: 'buses', key: 'id' },
       },
       driver_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
+        references: { model: 'users', key: 'id' },
       },
       conductor_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
+        references: { model: 'users', key: 'id' },
       },
       assigned_at: {
         type: DataTypes.DATE,

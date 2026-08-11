@@ -5,6 +5,7 @@ const {
   User,
   Remittance,
   RemittanceExpense,
+  Ticket,
 } = require("../models");
 const { fullName, sendRemittanceStatusEmail } = require("../config/mailer");
 
@@ -101,13 +102,35 @@ const getRemittanceById = async (req, res) => {
             "ticket_number_start",
             "ticket_number_end",
           ],
-          include: [{ model: Route, attributes: ["origin", "destination"] }],
+          include: [
+            { model: Route, attributes: ["origin", "destination"] },
+            {
+              model: Ticket,
+              attributes: [
+                "id",
+                "ticket_number",
+                "category",
+                "boarding_point",
+                "boarding_km",
+                "dropping_point",
+                "dropping_km",
+                "distance_km",
+                "fare",
+                "issued_at",
+              ],
+            },
+          ],
         },
       ],
     });
 
     if (!remittance) {
       return res.status(404).json({ message: "Remittance not found." });
+    }
+
+    // Sort each trip's tickets by ticket_number for a readable audit trail.
+    for (const trip of remittance.Trips) {
+      trip.Tickets.sort((a, b) => Number(a.ticket_number) - Number(b.ticket_number));
     }
 
     return res.json(remittance);

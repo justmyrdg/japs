@@ -8,7 +8,7 @@ const {
 } = require("../controllers/userController");
 const { authenticate, authorize } = require("../middleware/auth");
 
-router.use(authenticate, authorize("owner"));
+router.use(authenticate, authorize("owner", "secretary"));
 
 router.get("/", getUsers);
 router.post("/", createUser);

@@ -1,13 +1,15 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
-import { forkJoin } from 'rxjs';
 import { environment } from '../../../../../environments/environment';
 
+export type DashboardRangePreset = 'today' | '7d' | 'month' | '30d' | 'custom';
+
 interface DashboardData {
+  range: { from: string; to: string };
   kpi: {
-    net_gross_this_month: number;
-    passenger_count_this_month: number;
+    net_gross_in_range: number;
+    passenger_count_in_range: number;
     passenger_growth_pct: string | null;
     bus_utilisation_rate: number;
     total_buses: number;
@@ -57,18 +59,86 @@ export class Dashboard implements OnInit {
   dash = signal<DashboardData | null>(null);
   fore = signal<ForecastData | null>(null);
 
+  // ── Date range filter ─────────────────────────────────────────────────
+  rangePreset = signal<DashboardRangePreset>('month');
+  customFrom = signal<string>('');
+  customTo = signal<string>('');
+
+  readonly RANGE_PRESETS: { value: DashboardRangePreset; label: string }[] = [
+    { value: 'today', label: 'Today' },
+    { value: '7d', label: 'Last 7 Days' },
+    { value: 'month', label: 'This Month' },
+    { value: '30d', label: 'Last 30 Days' },
+    { value: 'custom', label: 'Custom Range' },
+  ];
+
   ngOnInit(): void {
-    forkJoin({
-      dash: this.http.get<DashboardData>(`${this.API}/dashboard`, { withCredentials: true }),
-      fore: this.http.get<ForecastData>(`${this.API}/forecast`, { withCredentials: true }),
-    }).subscribe({
-      next: ({ dash, fore }) => {
-        this.dash.set(dash);
-        this.fore.set(fore);
-        this.loading.set(false);
-      },
-      error: () => this.loading.set(false),
-    });
+    this.fore.set(null);
+    this.http
+      .get<ForecastData>(`${this.API}/forecast`, { withCredentials: true })
+      .subscribe({ next: (fore) => this.fore.set(fore) });
+    this.loadDashboard();
+  }
+
+  private resolvedRange(): { from: string; to: string } | null {
+    const toIso = (d: Date) => d.toISOString().split('T')[0];
+    const now = new Date();
+    switch (this.rangePreset()) {
+      case 'today':
+        return { from: toIso(now), to: toIso(now) };
+      case '7d': {
+        const from = new Date(now);
+        from.setDate(from.getDate() - 6);
+        return { from: toIso(from), to: toIso(now) };
+      }
+      case '30d': {
+        const from = new Date(now);
+        from.setDate(from.getDate() - 29);
+        return { from: toIso(from), to: toIso(now) };
+      }
+      case 'custom':
+        return this.customFrom() && this.customTo()
+          ? { from: this.customFrom(), to: this.customTo() }
+          : null;
+      case 'month':
+      default:
+        return null; // let the server default to the current month
+    }
+  }
+
+  loadDashboard(): void {
+    this.loading.set(true);
+    const range = this.resolvedRange();
+    let params = new HttpParams();
+    if (range) {
+      params = params.set('from', range.from).set('to', range.to);
+    }
+    this.http
+      .get<DashboardData>(`${this.API}/dashboard`, { withCredentials: true, params })
+      .subscribe({
+        next: (dash) => {
+          this.dash.set(dash);
+          this.loading.set(false);
+        },
+        error: () => this.loading.set(false),
+      });
+  }
+
+  setRangePreset(preset: DashboardRangePreset): void {
+    this.rangePreset.set(preset);
+    if (preset !== 'custom') this.loadDashboard();
+  }
+
+  onCustomFromInput(e: Event): void {
+    this.customFrom.set((e.target as HTMLInputElement).value);
+  }
+
+  onCustomToInput(e: Event): void {
+    this.customTo.set((e.target as HTMLInputElement).value);
+  }
+
+  applyCustomRange(): void {
+    if (this.customFrom() && this.customTo()) this.loadDashboard();
   }
 
   // ── SVG helpers ─────────────────────────────────────────────────────────
@@ -110,9 +180,9 @@ export class Dashboard implements OnInit {
     if (!d) return [];
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const result: { label: string; value: number }[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const dt = new Date();
-      dt.setDate(dt.getDate() - i);
+    const from = new Date(`${d.range.from}T00:00:00`);
+    const to = new Date(`${d.range.to}T00:00:00`);
+    for (let dt = new Date(from); dt <= to; dt.setDate(dt.getDate() + 1)) {
       const key = dt.toISOString().split('T')[0];
       const found = d.daily_passengers.find((r) => r.date?.toString().startsWith(key));
       result.push({

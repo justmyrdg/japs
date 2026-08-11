@@ -7,7 +7,7 @@ export const OWNER_ROUTES: Routes = [
   {
     path: '',
     component: OwnerLayout,
-    canActivate: [authGuard, roleGuard('owner')],
+    canActivate: [authGuard, roleGuard('owner', 'secretary')],
     children: [
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
       {

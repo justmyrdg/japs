@@ -15,7 +15,7 @@ const {
 } = require("../controllers/busController");
 const { authenticate, authorize } = require("../middleware/auth");
 
-router.use(authenticate, authorize("owner"));
+router.use(authenticate, authorize("owner", "secretary"));
 
 router.get("/", getBuses);
 router.post("/", createBus);

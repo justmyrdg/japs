@@ -30,14 +30,17 @@ module.exports = (sequelize) => {
       driver_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
+        references: { model: 'users', key: 'id' },
       },
       conductor_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
+        references: { model: 'users', key: 'id' },
       },
       route_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
+        references: { model: 'routes', key: 'id' },
       },
     },
     {

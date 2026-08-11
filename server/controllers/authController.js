@@ -4,7 +4,7 @@ const { User } = require("../models");
 
 const ROLE_REDIRECT = {
   owner: "/owner/dashboard",
-  secretary: "/secretary/dashboard",
+  secretary: "/owner/dashboard",
   audit_teller: "/audit-teller/dashboard",
   conductor: "/conductor/trips",
   driver: "/driver/dashboard",

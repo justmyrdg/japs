@@ -4,6 +4,7 @@ const User = require("./UserModel")(sequelize);
 const BusModel = require("./BusModel")(sequelize);
 const BusCrewHistory = require("./BusCrewHistoryModel")(sequelize);
 const Route = require("./RouteModel")(sequelize);
+const RouteStop = require("./RouteStopModel")(sequelize);
 const Trip = require("./TripModel")(sequelize);
 const FareRate = require("./FareRateModel")(sequelize);
 const FareSettings = require("./FareSettingsModel")(sequelize);
@@ -44,6 +45,10 @@ BusCrewHistory.belongsTo(User, { foreignKey: "conductor_id", as: "conductor" });
 // ── Route ──────────────────────────────────────────────────────────────────
 Route.hasMany(Trip, { foreignKey: "route_id" });
 Route.hasMany(FareRate, { foreignKey: "route_id" });
+Route.hasMany(RouteStop, { foreignKey: "route_id", as: "stops" });
+
+// ── RouteStop ─────────────────────────────────────────────────────────────
+RouteStop.belongsTo(Route, { foreignKey: "route_id" });
 
 // ── Trip ───────────────────────────────────────────────────────────────────
 Trip.belongsTo(BusModel, { foreignKey: "bus_id" });
@@ -80,6 +85,7 @@ module.exports = {
   BusModel,
   BusCrewHistory,
   Route,
+  RouteStop,
   Trip,
   FareRate,
   FareSettings,

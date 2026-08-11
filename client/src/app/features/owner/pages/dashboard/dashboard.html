@@ -13,6 +13,51 @@
   </span>
 </div>
 
+<!-- Date range filter -->
+<div class="flex flex-wrap items-center gap-2 mb-6 bg-white rounded-xl border border-gray-200 p-3">
+  <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider mr-1">Range</span>
+  @for (preset of RANGE_PRESETS; track preset.value) {
+    <button
+      (click)="setRangePreset(preset.value)"
+      class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+      [class]="
+        rangePreset() === preset.value
+          ? 'bg-[#1E5AAA] text-white'
+          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+      "
+    >
+      {{ preset.label }}
+    </button>
+  }
+  @if (rangePreset() === 'custom') {
+    <div class="flex items-center gap-2 ml-1">
+      <input
+        type="date"
+        [value]="customFrom()"
+        (input)="onCustomFromInput($event)"
+        class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-[#1E5AAA]"
+      />
+      <span class="text-gray-400 text-xs">to</span>
+      <input
+        type="date"
+        [value]="customTo()"
+        (input)="onCustomToInput($event)"
+        class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-[#1E5AAA]"
+      />
+      <button
+        (click)="applyCustomRange()"
+        [disabled]="!customFrom() || !customTo()"
+        class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#1E5AAA] text-white hover:bg-[#174d93] transition-colors cursor-pointer disabled:opacity-50"
+      >
+        Apply
+      </button>
+    </div>
+  }
+  @if (dash(); as d) {
+    <span class="text-xs text-gray-400 ml-auto">{{ d.range.from }} – {{ d.range.to }}</span>
+  }
+</div>
+
 @if (loading()) {
   <div class="flex items-center justify-center py-24 text-gray-400">
     <i class="pi pi-spinner pi-spin text-2xl mr-3"></i> Loading dashboard…
@@ -25,13 +70,13 @@
 } @else {
   <!-- ── KPI Cards (actual + tomorrow forecast side by side) ─────────── -->
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-    <!-- Net Gross this month -->
+    <!-- Net Gross in selected range -->
     <div class="bg-white rounded-xl border border-gray-200 p-5">
       <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
-        Net Gross (Month)
+        Net Gross (Selected Range)
       </p>
       <p class="text-2xl font-black text-[#1E5AAA]">
-        {{ dash()!.kpi.net_gross_this_month | currency: 'PHP' : 'symbol' : '1.0-0' }}
+        {{ dash()!.kpi.net_gross_in_range | currency: 'PHP' : 'symbol' : '1.0-0' }}
       </p>
       @if (fore()?.kpi_forecast?.predicted_revenue_tomorrow != null) {
         <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
@@ -52,13 +97,13 @@
       }
     </div>
 
-    <!-- Passengers this month -->
+    <!-- Passengers in selected range -->
     <div class="bg-white rounded-xl border border-gray-200 p-5">
       <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
-        Passengers (Month)
+        Passengers (Selected Range)
       </p>
       <p class="text-2xl font-black text-gray-800">
-        {{ dash()!.kpi.passenger_count_this_month | number }}
+        {{ dash()!.kpi.passenger_count_in_range | number }}
       </p>
       @if (fore()?.kpi_forecast?.predicted_passengers_tomorrow != null) {
         <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">

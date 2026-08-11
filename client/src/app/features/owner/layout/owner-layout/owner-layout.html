@@ -52,7 +52,7 @@
         </div>
       }
       <button
-        (click)="logout()"
+        (click)="confirmLogout()"
         class="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-white/10 transition-colors duration-150 text-sm text-white/80 hover:text-white cursor-pointer"
       >
         <i class="pi pi-sign-out text-base shrink-0"></i>
@@ -69,10 +69,14 @@
     <header
       class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0"
     >
-      <h1 class="text-base font-semibold text-gray-800">Owner Portal</h1>
+      <h1 class="text-base font-semibold text-gray-800">{{ roleLabel() }} Portal</h1>
       <div class="flex items-center gap-2 text-sm text-gray-500">
         <i class="pi pi-user text-[#1E5AAA]"></i>
         <span>{{ user?.first_name }} {{ user?.last_name }}</span>
+        <span
+          class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-blue-50 text-[#1E5AAA]"
+          >{{ roleLabel() }}</span
+        >
       </div>
     </header>
 
@@ -82,3 +86,14 @@
     </main>
   </div>
 </div>
+
+<app-confirm-modal
+  [open]="showLogoutConfirm()"
+  title="Log Out"
+  [message]="logoutMessage()"
+  confirmText="Log Out"
+  cancelText="Cancel"
+  icon="pi-sign-out"
+  (confirm)="logout()"
+  (cancel)="cancelLogout()"
+/>

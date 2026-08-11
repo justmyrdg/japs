@@ -3,6 +3,8 @@ const {
   Trip,
   BusModel,
   Route,
+  RouteStop,
+  FareSettings,
   User,
   PassengerCount,
   Ticket,
@@ -223,13 +225,58 @@ const savePassengerCounts = async (req, res) => {
   }
 };
 
+// Mirrors the discount-percent lookup in the client's autoCalculateFare() —
+// kept in sync manually since there's no shared package between client/server.
+const getDiscountPercent = (category, settings) => {
+  switch (category) {
+    case "regular":
+      return Number(settings.regular_discount_percent);
+    case "student":
+      return Number(settings.student_discount_percent);
+    case "senior_citizen":
+      return Number(settings.senior_citizen_discount_percent);
+    case "pwd":
+      return Number(settings.pwd_discount_percent);
+    case "discounted":
+      return Number(settings.discounted_discount_percent);
+    default:
+      return 0;
+  }
+};
+
+const findStopByKm = (stops, km) =>
+  stops.find((s) => Math.abs(Number(s.km_from_origin) - Number(km)) < 0.01);
+
+// GET /api/conductor/routes/:routeId/stops
+// Read-only mirror of the owner's stops endpoint, reachable by a conductor
+// session, so the ticketing page can populate its boarding/dropping dropdowns.
+const getRouteStopsForConductor = async (req, res) => {
+  const route = await Route.findByPk(req.params.routeId);
+  if (!route) return res.status(404).json({ message: "Route not found." });
+
+  const stops = await RouteStop.findAll({
+    where: { route_id: route.id },
+    order: [["km_from_origin", "ASC"]],
+  });
+
+  const merged = [
+    { name: route.origin, km_from_origin: 0 },
+    ...stops.map((s) => ({ name: s.name, km_from_origin: Number(s.km_from_origin) })),
+    { name: route.destination, km_from_origin: Number(route.distance_km ?? 0) },
+  ];
+
+  return res.json(merged);
+};
+
 // POST /api/conductor/trips/:id/tickets
-// Encode and simulate printing a ticket (updates ticket range, passenger count and grand total)
+// Encode and simulate printing a ticket. Distance and fare are derived and
+// verified server-side from the trip's route stops — the client only picks
+// which two stops (by km_from_origin) the passenger boarded/alighted at.
 const printTicket = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
-    const { category, fare, distance } = req.body;
+    const { category, boarding_km, dropping_km } = req.body;
     const conductorId = req.user.id;
 
     const trip = await Trip.findOne({
@@ -240,6 +287,69 @@ const printTicket = async (req, res) => {
       await transaction.rollback();
       return res.status(404).json({ message: "Trip not found." });
     }
+
+    const route = await Route.findByPk(trip.route_id, { transaction });
+    if (!route) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Trip has no route assigned." });
+    }
+    if (!(Number(route.distance_km) > 0)) {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: "This route has no distance configured. Ask the owner to set it before issuing tickets.",
+      });
+    }
+
+    const routeStops = await RouteStop.findAll({
+      where: { route_id: route.id },
+      transaction,
+    });
+    const stops = [
+      { name: route.origin, km_from_origin: 0 },
+      ...routeStops.map((s) => ({
+        name: s.name,
+        km_from_origin: Number(s.km_from_origin),
+      })),
+      { name: route.destination, km_from_origin: Number(route.distance_km ?? 0) },
+    ];
+
+    const boardingStop = findStopByKm(stops, boarding_km);
+    const droppingStop = findStopByKm(stops, dropping_km);
+    if (!boardingStop || !droppingStop) {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ message: "Invalid boarding/dropping point for this route." });
+    }
+
+    const distance_km = Math.abs(
+      droppingStop.km_from_origin - boardingStop.km_from_origin,
+    );
+    if (distance_km <= 0) {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ message: "Boarding and dropping point must be different." });
+    }
+
+    const fareSettings = await FareSettings.findOne({
+      order: [["id", "DESC"]],
+      transaction,
+    });
+    if (!fareSettings) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Fare settings not configured." });
+    }
+
+    const minFare = Number(fareSettings.minimum_fare);
+    const baseDistanceKm = Number(fareSettings.base_distance_km);
+    const ratePerKm = Number(fareSettings.rate_per_km);
+    const baseFare =
+      distance_km <= baseDistanceKm
+        ? minFare
+        : minFare + (distance_km - baseDistanceKm) * ratePerKm;
+    const discountPercent = getDiscountPercent(category, fareSettings);
+    const fare = parseFloat((baseFare * (1 - discountPercent / 100)).toFixed(2));
 
     // 1. Auto-generate ticket number (last for this trip + 1, starting at 1)
     const lastTicket = await Ticket.findOne({
@@ -255,7 +365,11 @@ const printTicket = async (req, res) => {
         trip_id: id,
         ticket_number: ticketNumber,
         category,
-        distance_km: distance || 0,
+        boarding_point: boardingStop.name,
+        boarding_km: boardingStop.km_from_origin,
+        dropping_point: droppingStop.name,
+        dropping_km: droppingStop.km_from_origin,
+        distance_km,
         fare,
         issued_at: new Date(),
       },
@@ -562,6 +676,7 @@ module.exports = {
   updateTripStatus,
   getTripPassengerCounts,
   savePassengerCounts,
+  getRouteStopsForConductor,
   printTicket,
   getTickets,
   submitRemittance,
