@@ -36,11 +36,25 @@ app.use("/api/audit-teller", auditTellerRoutes);
 app.use("/api/owner", ownerRoutes);
 
 // DB sync + server start
+// DB_SYNC_MODE: "alter" (default, safe — adds/adjusts columns without dropping
+// data) | "force" (drops and recreates every table — destroys all data, only
+// for a deliberate local reset) | "none" (no schema sync, e.g. against a
+// manually-migrated database).
+const SYNC_MODE = process.env.DB_SYNC_MODE || "alter";
+const syncOptions =
+	SYNC_MODE === "force" ? { force: true } : SYNC_MODE === "none" ? {} : { alter: true };
+
+if (SYNC_MODE === "force") {
+	console.warn(
+		"⚠ DB_SYNC_MODE=force — every table will be dropped and recreated, destroying all existing data.",
+	);
+}
+
 sequelize
 	.authenticate()
 	.then(() => {
 		console.log("Database connected.");
-		return sequelize.sync({ alter: true });
+		return sequelize.sync(syncOptions);
 	})
 	.then(() => {
 		app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
