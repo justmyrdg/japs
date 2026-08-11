@@ -25,7 +25,7 @@ git pull origin "${BRANCH}"
 
 echo "==> Installing server deps"
 cd "${APP_DIR}/server"
-npm ci --omit=dev
+npm install --omit=dev
 
 if [ ! -f .env ]; then
   echo "!! server/.env is missing. Copy server/.env.production.example to server/.env and fill it in before continuing." >&2
@@ -34,7 +34,11 @@ fi
 
 echo "==> Installing client deps and building (production)"
 cd "${APP_DIR}/client"
-npm ci
+# npm install, not ci: the lockfile is committed from a Windows dev machine,
+# and npm ci's strict lockfile match can fail on Linux for platform-specific
+# optional native deps (e.g. lightningcss's @emnapi/* WASM runtime shims)
+# even though the lockfile is otherwise valid.
+npm install
 npm run build -- --configuration=production
 
 echo "==> Starting/reloading backend under PM2"
