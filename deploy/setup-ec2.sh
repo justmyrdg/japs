@@ -30,8 +30,11 @@ echo "==> Installing git, nginx, python3/pip (for certbot)"
 dnf install -y git nginx python3 python3-pip
 
 echo "==> Installing certbot + nginx plugin (pip — AL2023 has no dnf package for these)"
-pip3 install --upgrade pip
-pip3 install certbot certbot-nginx
+# Don't try to upgrade pip itself — it was installed via dnf/rpm, and pip
+# can't cleanly uninstall an rpm-managed package (no RECORD file), which
+# aborts the whole script under set -e. --ignore-installed sidesteps the
+# same conflict for any of certbot's dependencies that also came from rpm.
+pip3 install --ignore-installed certbot certbot-nginx
 
 echo "==> Installing PM2 globally"
 npm install -g pm2
