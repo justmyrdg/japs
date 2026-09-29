@@ -12,7 +12,9 @@ export interface ScheduleTrip {
   driver_id: number;
   conductor_id: number;
   trip_number: number;
-  departure_time: string;
+  departure_time: string; // scheduled
+  actual_departure_time: string | null;
+  arrival_time: string | null;
   status: string;
   BusModel?: { id: number; bus_number: string; plate_number: string };
   Route?: { id: number; origin: string; destination: string };
@@ -55,6 +57,9 @@ export class Schedules implements OnInit {
   private alertService = inject(AlertService);
 
   private readonly BUSES_API = `${environment.apiUrl}/api/buses`;
+
+  // Departures later than this after the scheduled time get a "late" badge.
+  private readonly LATE_THRESHOLD_MINUTES = 10;
 
   private allTrips = signal<ScheduleTrip[]>([]);
   loading = signal(false);
@@ -319,5 +324,15 @@ export class Schedules implements OnInit {
     if (!routeId) return '—';
     const r = this.routes().find((x) => x.id === routeId);
     return r ? `${r.origin} → ${r.destination}` : '—';
+  }
+
+  /** Minutes the trip actually left after its scheduled time, or 0 if on time. */
+  lateMinutes(trip: ScheduleTrip): number {
+    if (!trip.actual_departure_time) return 0;
+    const diff = Math.round(
+      (new Date(trip.actual_departure_time).getTime() - new Date(trip.departure_time).getTime()) /
+        60000,
+    );
+    return diff > this.LATE_THRESHOLD_MINUTES ? diff : 0;
   }
 }

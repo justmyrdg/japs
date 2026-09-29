@@ -5,6 +5,11 @@ import { CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AlertService } from '../../../../core/services/alert.service';
 import { environment } from '../../../../../environments/environment';
+import {
+  TicketPassengerLine,
+  passengerCategoryLabel,
+  ticketPassengerSummary,
+} from '../../../../shared/models/ticket.models';
 
 interface RemittanceDetail {
   id: number;
@@ -46,7 +51,9 @@ interface RemittanceDetail {
 interface TicketRecord {
   id: number;
   ticket_number: string;
-  category: string;
+  category: string | null;
+  passengers: TicketPassengerLine[] | null;
+  passenger_count: number | null;
   boarding_point: string | null;
   boarding_km: number | null;
   dropping_point: string | null;
@@ -293,13 +300,11 @@ export class RemittanceReviewPage implements OnInit {
   }
 
   getCategoryLabel(cat: string): string {
-    const labels: Record<string, string> = {
-      regular: 'Regular',
-      student: 'Student',
-      senior_citizen: 'Senior Citizen',
-      pwd: 'PWD',
-      discounted: 'Discounted',
-    };
-    return labels[cat] ?? cat;
+    return passengerCategoryLabel(cat);
+  }
+
+  /** e.g. "1 Regular · 2 Student" (group tickets and older single-passenger ones). */
+  passengerSummary(t: TicketRecord): string {
+    return ticketPassengerSummary(t);
   }
 }

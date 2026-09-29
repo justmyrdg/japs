@@ -5,7 +5,23 @@ import { environment } from '../../../../../environments/environment';
 
 export type DashboardRangePreset = 'today' | '7d' | 'month' | '30d' | 'custom';
 
+export type InsightTone = 'positive' | 'negative' | 'neutral' | 'warning';
+
+export interface DashboardInsight {
+  tone: InsightTone;
+  title: string;
+  message: string;
+}
+
+const INSIGHT_STYLES: Record<InsightTone, { bg: string; icon: string; text: string }> = {
+  positive: { bg: 'bg-green-50', icon: 'pi-arrow-up-right', text: 'text-green-600' },
+  negative: { bg: 'bg-red-50', icon: 'pi-arrow-down-right', text: 'text-red-600' },
+  warning: { bg: 'bg-amber-50', icon: 'pi-exclamation-triangle', text: 'text-amber-600' },
+  neutral: { bg: 'bg-gray-50', icon: 'pi-info-circle', text: 'text-[#1E5AAA]' },
+};
+
 interface DashboardData {
+  insights?: DashboardInsight[];
   range: { from: string; to: string };
   kpi: {
     net_gross_in_range: number;
@@ -57,6 +73,7 @@ export class Dashboard implements OnInit {
 
   loading = signal(true);
   dash = signal<DashboardData | null>(null);
+  insights = computed(() => this.dash()?.insights ?? []);
   fore = signal<ForecastData | null>(null);
 
   // ── Date range filter ─────────────────────────────────────────────────
@@ -343,5 +360,9 @@ export class Dashboard implements OnInit {
   }
   growthPrefix(val: string | null): string {
     return !val ? '' : +val >= 0 ? '+' : '';
+  }
+
+  insightStyle(tone: InsightTone) {
+    return INSIGHT_STYLES[tone] ?? INSIGHT_STYLES.neutral;
   }
 }

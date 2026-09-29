@@ -1,7 +1,8 @@
 <div class="mb-4 md:mb-6">
   <h2 class="text-lg md:text-2xl font-bold text-gray-800">Conductor Ticketing Terminal</h2>
   <p class="text-xs md:text-sm text-gray-500 mt-1">
-    Select an ongoing trip, encode passenger ticket details, and trigger the thermal printer output.
+    Select an ongoing trip, encode the passengers travelling together on one ticket, and trigger
+    the thermal printer output.
   </p>
 </div>
 
@@ -30,7 +31,7 @@
     <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-md border border-gray-100">
       <div class="flex items-center gap-2 border-b border-gray-100 pb-4 mb-5">
         <i class="pi pi-ticket text-blue-500 text-xl"></i>
-        <h3 class="font-bold text-gray-800 text-lg">Encode Passenger Ticket</h3>
+        <h3 class="font-bold text-gray-800 text-lg">Encode Ticket</h3>
       </div>
 
       <form [formGroup]="ticketForm" (ngSubmit)="printTicketSubmit()" class="space-y-5">
@@ -50,36 +51,69 @@
           </span>
         </div>
 
-        <!-- Passenger Fare Category Selector -->
+        <!-- Passengers on this ticket (one ticket can cover a whole group) -->
         <div>
           <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5"
-            >Passenger Category</label
+            >Passengers on this Ticket</label
           >
-          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-            @for (cat of ['regular', 'student', 'senior_citizen', 'pwd', 'discounted']; track cat) {
-              <label
-                class="flex flex-col items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all text-center"
-                [class.border-blue-500]="ticketForm.get('category')?.value === cat"
-                [class.bg-blue-50/20]="ticketForm.get('category')?.value === cat"
-                [class.border-gray-200]="ticketForm.get('category')?.value !== cat"
-                [class.hover:border-blue-200]="ticketForm.get('category')?.value !== cat"
+          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5" formGroupName="quantities">
+            @for (cat of CATEGORIES; track cat) {
+              <div
+                class="flex items-center justify-between gap-3 p-3 rounded-xl border-2 transition-all"
+                [class.border-blue-500]="quantity(cat) > 0"
+                [class.bg-blue-50/20]="quantity(cat) > 0"
+                [class.border-gray-200]="quantity(cat) === 0"
               >
-                <input type="radio" formControlName="category" [value]="cat" class="hidden" />
-                <span class="text-xs font-bold text-gray-700 capitalize mb-1">{{
-                  getCategoryLabel(cat)
-                }}</span>
-                @if (cat === 'regular') {
-                  <span
-                    class="text-[9px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.5 rounded-full"
-                    >Base Fare</span
+                <div class="min-w-0">
+                  <span class="block text-xs font-bold text-gray-700">{{
+                    getCategoryLabel(cat)
+                  }}</span>
+                  @if (getDiscountPercent(cat) > 0) {
+                    <span
+                      class="text-[9px] bg-green-100 text-green-800 font-bold px-1.5 py-0.5 rounded-full"
+                      >{{ getDiscountPercent(cat) }}% off</span
+                    >
+                  } @else {
+                    <span
+                      class="text-[9px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.5 rounded-full"
+                      >Base fare</span
+                    >
+                  }
+                  @if (baseFare() > 0) {
+                    <span class="block text-[10px] text-gray-400 mt-1"
+                      >₱{{ categoryUnitFare(cat) | number: '1.2-2' }} each</span
+                    >
+                  }
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    (click)="changeQuantity(cat, -1)"
+                    [disabled]="quantity(cat) === 0"
+                    class="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                    [attr.aria-label]="'Remove one ' + getCategoryLabel(cat)"
                   >
-                } @else {
-                  <span
-                    class="text-[9px] bg-green-100 text-green-800 font-bold px-1.5 py-0.5 rounded-full"
-                    >20% Off</span
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputmode="numeric"
+                    [formControlName]="cat"
+                    class="w-12 text-center border border-gray-300 rounded-lg py-1.5 text-sm font-bold outline-none focus:border-blue-500"
+                    [attr.aria-label]="getCategoryLabel(cat) + ' passengers'"
+                  />
+                  <button
+                    type="button"
+                    (click)="changeQuantity(cat, 1)"
+                    class="w-8 h-8 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer"
+                    [attr.aria-label]="'Add one ' + getCategoryLabel(cat)"
                   >
-                }
-              </label>
+                    +
+                  </button>
+                </div>
+              </div>
             }
           </div>
         </div>
@@ -138,15 +172,33 @@
             >Calculated Ticket Price</label
           >
           <div
-            class="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4 flex items-center justify-between"
+            class="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4"
           >
-            <span class="text-xs font-semibold text-gray-600">Total Fare:</span>
-            <span class="text-3xl font-black text-green-700"
-              >₱{{ ticketForm.get('fare')?.value | number: '1.2-2' }}</span
-            >
+            @if (baseFare() > 0 && fareLines().length > 0) {
+              <div class="space-y-1 mb-3 text-xs text-gray-600">
+                @for (line of fareLines(); track line.category) {
+                  <div class="flex justify-between gap-2">
+                    <span
+                      >{{ getCategoryLabel(line.category) }} × {{ line.quantity }}
+                      <span class="text-gray-400">&#64; ₱{{ line.unit_fare | number: '1.2-2' }}</span></span
+                    >
+                    <span class="font-semibold">₱{{ line.subtotal | number: '1.2-2' }}</span>
+                  </div>
+                }
+              </div>
+            }
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-gray-600"
+                >Total Fare ({{ totalPassengers() }}
+                {{ totalPassengers() === 1 ? 'passenger' : 'passengers' }}):</span
+              >
+              <span class="text-3xl font-black text-green-700"
+                >₱{{ totalFare() | number: '1.2-2' }}</span
+              >
+            </div>
           </div>
           <p class="text-[10px] text-gray-400 mt-1">
-            Calculated automatically based on distance, minimum fare, and category discount.
+            Calculated automatically based on distance, minimum fare, and each category's discount.
           </p>
         </div>
 
@@ -272,83 +324,85 @@
         </button>
       </div>
 
-      <!-- Receipt Content -->
+      <!-- Receipt Content — printed as an image at 384px = 384 printer dots (≈8 dots/mm on
+           58mm paper), so sizes here are in printer dots: text-xl ≈ 2.5mm, text-2xl ≈ 3mm.
+           Everything is solid black: the print is thresholded to 1-bit, and grey/light
+           strokes come out thin or disappear. -->
       <div
         #receiptContent
-        class="bg-white p-4 font-mono text-xs text-black space-y-2 max-h-[70vh] overflow-y-auto print:max-h-none print:overflow-visible"
+        class="bg-white px-2 py-4 font-mono text-xl font-medium text-black space-y-3 max-h-[70vh] overflow-y-auto print:max-h-none print:overflow-visible"
       >
         <!-- Store Header -->
         <div class="text-center space-y-1">
-          <img src="assets/images/JAPS (black).png" alt="JAPS" class="h-8 mx-auto" />
-          <h4 class="text-sm font-bold tracking-wider">JAPS TRANSIT</h4>
-          <p class="text-[10px]">Bus Operations & Ticketing</p>
-          <p class="text-[10px] text-gray-500">
-            Date: {{ lastPrintedTicket()?.date | date: 'medium' }}
-          </p>
+          <img src="assets/images/JAPS (black).png" alt="JAPS" class="h-14 mx-auto" />
+          <h4 class="text-2xl font-bold tracking-wider">JAPS TRANSIT</h4>
+          <p class="text-lg">Bus Operations & Ticketing</p>
+          <p class="text-lg">Date: {{ lastPrintedTicket()?.date | date: 'medium' }}</p>
         </div>
 
-        <div class="border-t border-dashed border-gray-300 my-1"></div>
+        <div class="border-t-2 border-dashed border-black"></div>
 
         <!-- Ticket Number and Metadata -->
-        <div class="space-y-1.5">
-          <div class="flex justify-between font-bold text-sm">
+        <div class="space-y-1">
+          <div class="flex justify-between gap-2 font-bold text-2xl">
             <span>TICKET NO:</span>
             <span>#{{ lastPrintedTicket()?.ticketNumber }}</span>
           </div>
-          <div class="flex justify-between">
+          <div class="flex justify-between gap-2">
             <span>BUS NO:</span>
-            <span>{{ lastPrintedTicket()?.bus?.bus_number }}</span>
+            <span class="text-right">{{ lastPrintedTicket()?.bus?.bus_number }}</span>
           </div>
-          <div class="flex justify-between">
+          <div class="flex justify-between gap-2">
             <span>PLATE NO:</span>
-            <span>{{ lastPrintedTicket()?.bus?.plate_number }}</span>
+            <span class="text-right">{{ lastPrintedTicket()?.bus?.plate_number }}</span>
           </div>
-          <div class="flex justify-between">
+          <div class="flex justify-between gap-2">
             <span>FROM:</span>
-            <span>{{ lastPrintedTicket()?.boardingPoint }}</span>
+            <span class="text-right font-bold">{{ lastPrintedTicket()?.boardingPoint }}</span>
           </div>
-          <div class="flex justify-end">
-            <span>TO: {{ lastPrintedTicket()?.droppingPoint }}</span>
+          <div class="flex justify-between gap-2">
+            <span>TO:</span>
+            <span class="text-right font-bold">{{ lastPrintedTicket()?.droppingPoint }}</span>
           </div>
         </div>
 
-        <div class="border-t border-dashed border-gray-300 my-1"></div>
+        <div class="border-t-2 border-dashed border-black"></div>
 
         <!-- Fare details -->
-        <div class="space-y-2">
-          <div class="flex justify-between">
+        <div class="space-y-1">
+          <div class="flex justify-between gap-2">
             <span>Distance:</span>
-            <span>{{ lastPrintedTicket()?.distance }} km</span>
+            <span class="text-right">{{ lastPrintedTicket()?.distance }} km</span>
           </div>
-          <div class="flex justify-between font-semibold">
-            <span class="capitalize">Category ({{ lastPrintedTicket()?.category }}):</span>
-            <span>₱{{ lastPrintedTicket()?.fare | number: '1.2-2' }}</span>
-          </div>
-          @if (lastPrintedTicket()?.discountPercent > 0) {
-            <div class="flex justify-between text-green-600">
-              <span>Discount:</span>
-              <span>{{ lastPrintedTicket()?.discountPercent }}% off</span>
+          @for (line of lastPrintedTicket()?.passengers ?? []; track line.category) {
+            <div class="flex justify-between gap-2">
+              <span>{{ getCategoryLabel(line.category) }} ×{{ line.quantity }}</span>
+              <span class="text-right">₱{{ line.subtotal | number: '1.2-2' }}</span>
             </div>
           }
-          <div class="flex justify-between font-bold text-sm pt-1.5 border-t border-gray-100">
+          <div class="flex justify-between gap-2 font-bold">
+            <span>PASSENGERS:</span>
+            <span class="text-right">{{ lastPrintedTicket()?.passengerCount }}</span>
+          </div>
+          <div class="flex justify-between gap-2 font-bold text-2xl pt-2 border-t-2 border-black">
             <span>TOTAL AMOUNT:</span>
-            <span>₱{{ lastPrintedTicket()?.fare | number: '1.2-2' }}</span>
+            <span class="text-right">₱{{ lastPrintedTicket()?.fare | number: '1.2-2' }}</span>
           </div>
         </div>
 
-        <div class="border-t border-dashed border-gray-300 my-1"></div>
+        <div class="border-t-2 border-dashed border-black"></div>
 
         <!-- Ticket validation code (kept as plain text — a solid-black barcode
              graphic here would add printed area/data for little payoff) -->
-        <div class="flex items-center justify-center py-1">
-          <span class="text-[9px] text-gray-500 font-semibold tracking-widest"
+        <div class="flex items-center justify-center">
+          <span class="text-lg font-bold tracking-widest"
             >JAPS-{{ lastPrintedTicket()?.ticketNumber }}</span
           >
         </div>
 
-        <div class="text-center text-[10px] text-gray-500 pt-2">
+        <div class="text-center text-lg">
           <p>Thank you for riding JAPS Transit!</p>
-          <p class="font-bold text-[8px] uppercase mt-1">Please keep this ticket for validation</p>
+          <p class="font-bold text-base uppercase mt-1">Please keep this ticket for validation</p>
         </div>
 
         <!-- Trailing blank space — gives room to cut the paper without clipping

@@ -64,23 +64,41 @@ describe('TicketingPage', () => {
         Route: { id: 1, origin: 'Manila', destination: 'Baguio', distance_km: 250 },
       },
     ]);
-    component.ticketForm.setValue({
-      category: 'regular',
+    component.ticketForm.patchValue({
       boarding_km: 0,
       dropping_km: 5,
-      fare: 20,
+      quantities: { regular: 1, student: 1, senior_citizen: 1, pwd: 0, discounted: 0 },
     });
+
+    // 5 km with a 4 km base: 10 + 1 × 2 = ₱12 regular, ₱9.60 with a 20% discount.
+    expect(component.totalPassengers()).toBe(3);
+    expect(component.totalFare()).toBe(31.2);
 
     component.printTicketSubmit();
 
     const req = httpMock.expectOne(`${environment.apiUrl}/api/conductor/trips/1/tickets`);
+    expect(req.request.body).toEqual({
+      boarding_km: 0,
+      dropping_km: 5,
+      passengers: [
+        { category: 'regular', quantity: 1 },
+        { category: 'student', quantity: 1 },
+        { category: 'senior_citizen', quantity: 1 },
+      ],
+    });
     req.flush({
       ticket: {
         ticket_number: 7,
         boarding_point: 'Manila',
         dropping_point: 'Baguio',
         distance_km: 5,
-        fare: 20,
+        fare: 31.2,
+        passenger_count: 3,
+        passengers: [
+          { category: 'regular', quantity: 1, unit_fare: 12, subtotal: 12 },
+          { category: 'student', quantity: 1, unit_fare: 9.6, subtotal: 9.6 },
+          { category: 'senior_citizen', quantity: 1, unit_fare: 9.6, subtotal: 9.6 },
+        ],
       },
     });
 
@@ -93,6 +111,9 @@ describe('TicketingPage', () => {
     const receiptEl = printTicketImage.mock.calls[0][0] as HTMLElement;
     expect(receiptEl.textContent).toContain('BUS-01');
     expect(receiptEl.textContent).toContain('Manila');
+    expect(receiptEl.textContent).toContain('Student ×1');
+    expect(receiptEl.textContent).toContain('Senior Citizen ×1');
+    expect(receiptEl.textContent).toMatch(/PASSENGERS:\s*3/);
 
     // printTicketSubmit()'s success handler also refreshes trips & passenger counts.
     httpMock.expectOne(`${environment.apiUrl}/api/conductor/trips`).flush([]);

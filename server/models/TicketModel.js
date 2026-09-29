@@ -22,8 +22,21 @@ module.exports = (sequelize) => {
           "pwd",
           "discounted",
         ),
-        allowNull: false,
+        // Set only when every passenger on the ticket is the same category; mixed-group
+        // tickets leave it null and are described by `passengers` instead.
+        allowNull: true,
         defaultValue: "regular",
+      },
+      // One ticket can cover a group: [{ category, quantity, unit_fare, subtotal }].
+      // Null on tickets issued before group ticketing (one passenger, `category`, `fare`).
+      passengers: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+      },
+      passenger_count: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1,
       },
       boarding_point: {
         type: DataTypes.STRING,
@@ -45,6 +58,7 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(6, 2),
         allowNull: false,
       },
+      // Total amount for the whole ticket (sum of the passenger subtotals).
       fare: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,

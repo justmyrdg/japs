@@ -10,6 +10,9 @@ const {
   getTickets,
   submitRemittance,
   getRemittances,
+  createExpense,
+  getExpenses,
+  deleteExpense,
 } = require("../controllers/conductorController");
 const { authenticate, authorize } = require("../middleware/auth");
 
@@ -24,5 +27,8 @@ router.post("/trips/:id/tickets", printTicket);
 router.get("/tickets", getTickets);
 router.get("/remittances", getRemittances);
 router.post("/remittances", submitRemittance);
+router.get("/expenses", getExpenses);
+router.post("/expenses", createExpense);
+router.delete("/expenses/:id", deleteExpense);
 
 module.exports = router;

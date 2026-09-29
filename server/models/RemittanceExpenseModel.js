@@ -1,4 +1,5 @@
 const { DataTypes } = require('sequelize');
+const EXPENSE_TYPES = require('./expenseTypes');
 
 module.exports = (sequelize) => {
   const RemittanceExpense = sequelize.define(
@@ -15,17 +16,7 @@ module.exports = (sequelize) => {
         references: { model: 'remittances', key: 'id' },
       },
       expense_type: {
-        type: DataTypes.ENUM(
-          'officer',
-          'toll_fees',
-          'parking',
-          'pwd',
-          'washing',
-          'diesel',
-          'caller_grand_terminal',
-          'caller_calamba_terminal',
-          'miscellaneous'
-        ),
+        type: DataTypes.ENUM(...EXPENSE_TYPES),
         allowNull: false,
       },
       amount: {

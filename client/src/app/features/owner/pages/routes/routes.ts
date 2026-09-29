@@ -1,6 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { Observable, firstValueFrom } from 'rxjs';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AlertService } from '../../../../core/services/alert.service';
 import { environment } from '../../../../../environments/environment';
@@ -97,11 +97,16 @@ export class Routes implements OnInit {
     km_from_origin: [null, [Validators.required, Validators.min(0.01)]],
   });
 
-  // Stops queued while creating a brand-new route (no route_id to POST against yet) —
-  // created right after the route itself on save().
+  // Working list of intermediate stops in the Add/Edit route modal. When adding, these are
+  // created right after the route itself on save(); when editing, it starts as the route's
+  // saved stops (with ids) and save() diffs it against `originalStops`.
   pendingStops = signal<RouteStopPoint[]>([]);
+  originalStops = signal<RouteStopPoint[]>([]);
+  loadingModalStops = signal(false);
   newStopName = signal('');
   newStopKm = signal<number | null>(null);
+  // Id of a saved stop pulled back into the inputs for editing (re-added on "Update").
+  editingPendingStopId = signal<number | null>(null);
   pendingStopError = signal<string | null>(null);
 
   form: FormGroup = this.fb.group({
@@ -141,17 +146,39 @@ export class Routes implements OnInit {
   openAdd(): void {
     this.editingRoute.set(null);
     this.form.reset();
-    this.pendingStops.set([]);
-    this.newStopName.set('');
-    this.newStopKm.set(null);
-    this.pendingStopError.set(null);
+    this.resetStopEditor([]);
     this.showModal.set(true);
   }
 
   openEdit(route: AppRoute): void {
     this.editingRoute.set(route);
     this.form.patchValue(route);
+    this.resetStopEditor([]);
     this.showModal.set(true);
+
+    this.loadingModalStops.set(true);
+    this.http
+      .get<RouteStopPoint[]>(`${this.API}/${route.id}/stops`, { withCredentials: true })
+      .subscribe({
+        next: (data) => {
+          // The endpoint also returns origin/destination (no id) — only stops are editable.
+          this.resetStopEditor(data.filter((s) => s.id != null));
+          this.loadingModalStops.set(false);
+        },
+        error: () => {
+          this.loadingModalStops.set(false);
+          this.pendingStopError.set('Could not load this route\'s stops.');
+        },
+      });
+  }
+
+  private resetStopEditor(stops: RouteStopPoint[]): void {
+    this.originalStops.set(stops);
+    this.pendingStops.set([...stops]);
+    this.newStopName.set('');
+    this.newStopKm.set(null);
+    this.editingPendingStopId.set(null);
+    this.pendingStopError.set(null);
   }
 
   closeModal(): void {
@@ -189,11 +216,15 @@ export class Routes implements OnInit {
       return;
     }
 
+    const editId = this.editingPendingStopId();
     this.pendingStops.update((list) =>
-      [...list, { name, km_from_origin: km }].sort((a, b) => a.km_from_origin - b.km_from_origin),
+      [...list, { ...(editId != null ? { id: editId } : {}), name, km_from_origin: km }].sort(
+        (a, b) => a.km_from_origin - b.km_from_origin,
+      ),
     );
     this.newStopName.set('');
     this.newStopKm.set(null);
+    this.editingPendingStopId.set(null);
     this.pendingStopError.set(null);
   }
 
@@ -201,41 +232,58 @@ export class Routes implements OnInit {
     this.pendingStops.update((list) => list.filter((s) => s !== stop));
   }
 
+  /** Pulls a stop back into the name/km inputs for editing; "Update" re-adds it. */
+  editPendingStop(stop: RouteStopPoint): void {
+    this.removePendingStop(stop);
+    this.newStopName.set(stop.name);
+    this.newStopKm.set(Number(stop.km_from_origin));
+    this.editingPendingStopId.set(stop.id ?? null);
+    this.pendingStopError.set(null);
+  }
+
+  /** Validates the whole working stop list against the (possibly changed) route distance. */
+  private validatePendingStops(): string | null {
+    if (this.newStopName().trim() || this.newStopKm() !== null) {
+      return 'Add or clear the stop you are still typing before saving.';
+    }
+    const distanceKm = Number(this.form.get('distance_km')?.value);
+    const kms = new Set<number>();
+    for (const s of this.pendingStops()) {
+      const km = Number(s.km_from_origin);
+      if (!(km > 0 && km < distanceKm)) {
+        return `"${s.name}" is at ${km} km — stops must be between 0 and ${distanceKm} km.`;
+      }
+      if (kms.has(km)) return `Two stops are at ${km} km from origin.`;
+      kms.add(km);
+    }
+    return null;
+  }
+
   save(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
+    const stopError = this.validatePendingStops();
+    if (stopError) {
+      this.pendingStopError.set(stopError);
+      return;
+    }
     const editing = this.editingRoute();
 
     if (editing) {
-      this.http
-        .put<AppRoute>(`${this.API}/${editing.id}`, this.form.value, { withCredentials: true })
-        .subscribe({
-          next: () => {
-            this.alertService.success('Saved', 'Route updated.');
-            this.closeModal();
-            this.loadRoutes();
-          },
-          error: (err) =>
-            this.alertService.error('Error', err.error?.message ?? 'Something went wrong.'),
-        });
+      this.saveEditedRoute(editing);
       return;
     }
 
     this.http.post<AppRoute>(this.API, this.form.value, { withCredentials: true }).subscribe({
       next: async (route) => {
-        let stopFailure: string | null = null;
-        for (const stop of this.pendingStops()) {
-          try {
-            await firstValueFrom(
-              this.http.post(`${this.API}/${route.id}/stops`, stop, { withCredentials: true }),
-            );
-          } catch (err: any) {
-            stopFailure = `"${stop.name}" failed to save: ${err.error?.message ?? 'Something went wrong.'}`;
-            break;
-          }
-        }
+        const stopFailure = await this.runStopRequests(
+          this.pendingStops().map((stop) => ({
+            stop,
+            send: () => this.http.post(`${this.API}/${route.id}/stops`, stop, { withCredentials: true }),
+          })),
+        );
         if (stopFailure) {
           this.alertService.error('Route created, but a stop failed', stopFailure);
         } else {
@@ -247,6 +295,86 @@ export class Routes implements OnInit {
       error: (err) =>
         this.alertService.error('Error', err.error?.message ?? 'Something went wrong.'),
     });
+  }
+
+  /** Runs stop requests in order, stopping at the first failure; returns its message. */
+  private async runStopRequests(
+    requests: { stop: RouteStopPoint; send: () => Observable<unknown> }[],
+  ): Promise<string | null> {
+    for (const { stop, send } of requests) {
+      try {
+        await firstValueFrom(send());
+      } catch (err: any) {
+        return `"${stop.name}" failed to save: ${err.error?.message ?? 'Something went wrong.'}`;
+      }
+    }
+    return null;
+  }
+
+  /** Saves the route, then applies the stop list diff. The server only accepts stops
+   *  within the route's current distance, so when the route gets shorter the stops are
+   *  moved/removed first, and when it gets longer the route is updated first. */
+  private async saveEditedRoute(route: AppRoute): Promise<void> {
+    const url = `${this.API}/${route.id}`;
+    const opts = { withCredentials: true };
+    const original = this.originalStops();
+    const pending = this.pendingStops();
+
+    const removed = original.filter((o) => !pending.some((p) => p.id === o.id));
+    const changed = pending.filter((p) => {
+      const o = original.find((x) => x.id === p.id);
+      return !!o && (o.name !== p.name || Number(o.km_from_origin) !== Number(p.km_from_origin));
+    });
+    const added = pending.filter((p) => p.id == null);
+
+    const deletes = removed.map((stop) => ({
+      stop,
+      send: () => this.http.delete(`${url}/stops/${stop.id}`, opts),
+    }));
+    const updates = changed.map((stop) => ({
+      stop,
+      send: () => this.http.put(`${url}/stops/${stop.id}`, stop, opts),
+    }));
+    const creates = added.map((stop) => ({
+      stop,
+      send: () => this.http.post(`${url}/stops`, stop, opts),
+    }));
+
+    const updateRoute = async (): Promise<boolean> => {
+      try {
+        await firstValueFrom(this.http.put<AppRoute>(url, this.form.value, opts));
+        return true;
+      } catch (err: any) {
+        this.alertService.error('Error', err.error?.message ?? 'Something went wrong.');
+        return false;
+      }
+    };
+
+    const shrinking = Number(this.form.value.distance_km) < Number(route.distance_km ?? 0);
+    let stopFailure: string | null = null;
+    if (shrinking) {
+      stopFailure = await this.runStopRequests([...deletes, ...updates]);
+      if (!stopFailure) {
+        if (!(await updateRoute())) return this.afterRouteSaved(route.id);
+        stopFailure = await this.runStopRequests(creates);
+      }
+    } else {
+      if (!(await updateRoute())) return;
+      stopFailure = await this.runStopRequests([...deletes, ...updates, ...creates]);
+    }
+
+    if (stopFailure) {
+      this.alertService.error('Route saved, but a stop failed', stopFailure);
+    } else {
+      this.alertService.success('Saved', 'Route updated.');
+    }
+    this.afterRouteSaved(route.id);
+  }
+
+  private afterRouteSaved(routeId: number): void {
+    this.closeModal();
+    this.loadRoutes();
+    if (this.expandedRouteId() === routeId) this.loadStops(routeId);
   }
 
   confirmDelete(route: AppRoute): void {

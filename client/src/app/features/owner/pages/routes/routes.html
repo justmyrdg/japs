@@ -248,14 +248,17 @@
             </p>
           </div>
 
-          @if (!editingRoute()) {
-            <div class="border-t border-gray-100 pt-4">
+          <div class="border-t border-gray-100 pt-4">
               <label class="block text-xs font-medium text-gray-600 mb-2"
-                >Stops (optional) — distance measured from the Origin</label
+                >Stopovers (optional) — distance measured from the Origin</label
               >
 
-              @if (pendingStops().length > 0) {
-                <div class="space-y-1.5 mb-3">
+              @if (loadingModalStops()) {
+                <p class="text-xs text-gray-400 mb-3">
+                  <i class="pi pi-spin pi-spinner text-[11px]"></i> Loading stops…
+                </p>
+              } @else if (pendingStops().length > 0) {
+                <div class="space-y-1.5 mb-3 max-h-48 overflow-y-auto">
                   @for (stop of pendingStops(); track stop.km_from_origin) {
                     <div
                       class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs"
@@ -263,17 +266,29 @@
                       <span class="font-medium text-gray-700"
                         >{{ stop.name }} <span class="text-gray-400">— {{ stop.km_from_origin }} km</span></span
                       >
-                      <button
-                        type="button"
-                        (click)="removePendingStop(stop)"
-                        class="p-1 text-gray-400 hover:text-red-500 rounded transition-colors cursor-pointer"
-                        title="Remove stop"
-                      >
-                        <i class="pi pi-times text-[11px]"></i>
-                      </button>
+                      <span class="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          (click)="editPendingStop(stop)"
+                          class="p-1 text-gray-400 hover:text-[#1E5AAA] rounded transition-colors cursor-pointer"
+                          title="Edit stop"
+                        >
+                          <i class="pi pi-pencil text-[11px]"></i>
+                        </button>
+                        <button
+                          type="button"
+                          (click)="removePendingStop(stop)"
+                          class="p-1 text-gray-400 hover:text-red-500 rounded transition-colors cursor-pointer"
+                          title="Remove stop"
+                        >
+                          <i class="pi pi-times text-[11px]"></i>
+                        </button>
+                      </span>
                     </div>
                   }
                 </div>
+              } @else if (editingRoute()) {
+                <p class="text-xs text-gray-400 mb-3">This route has no stopovers yet.</p>
               }
 
               <div class="flex gap-2">
@@ -298,7 +313,7 @@
                   (click)="addPendingStop()"
                   class="px-3 py-2 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors cursor-pointer"
                 >
-                  Add
+                  {{ editingPendingStopId() != null ? 'Update' : 'Add' }}
                 </button>
               </div>
               @if (pendingStopError()) {
@@ -306,10 +321,9 @@
               }
               <p class="text-[10px] text-gray-400 mt-1.5">
                 Enter each stop's distance from the Origin above — not from the stop before it.
-                Add stops now, or manage them later from the route's expand row.
+                Changes to stopovers are saved together with the route.
               </p>
-            </div>
-          }
+          </div>
         </div>
 
         <div class="flex justify-end gap-3 px-8 py-5 border-t border-gray-100 mt-4">

@@ -4,12 +4,12 @@ const {
   getFareSettings,
   updateFareSettings,
 } = require("../controllers/fareSettingsController");
-const { authenticate, authorize } = require("../middleware/auth");
+const { authenticate, authorize, OWNER_LEVEL_ROLES } = require("../middleware/auth");
 
-// GET is accessible by owner, secretary, and conductor (for ticketing)
-router.get("/", authenticate, authorize("owner", "secretary", "conductor"), getFareSettings);
+// GET is accessible by owner-level roles and conductor (for ticketing)
+router.get("/", authenticate, authorize(...OWNER_LEVEL_ROLES, "conductor"), getFareSettings);
 
-// PUT is owner/secretary only
-router.put("/", authenticate, authorize("owner", "secretary"), updateFareSettings);
+// PUT is owner-level roles only
+router.put("/", authenticate, authorize(...OWNER_LEVEL_ROLES), updateFareSettings);
 
 module.exports = router;

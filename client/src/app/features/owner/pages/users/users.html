@@ -3,7 +3,7 @@
   <div>
     <h2 class="text-xl font-semibold text-gray-800">Users</h2>
     <p class="text-sm text-gray-400 mt-0.5">
-      Manage secretary, audit teller, conductor and driver accounts
+      Manage secretary, admin staff, audit teller, conductor and driver accounts
     </p>
   </div>
   <button
@@ -350,15 +350,18 @@
                 <span class="text-gray-400 font-normal">(leave blank to keep current)</span>
               }
             </label>
+            <!-- Shown as plain text when creating so the generated value can be read/edited. -->
             <input
               formControlName="password"
-              type="password"
+              [type]="editingUser() ? 'password' : 'text'"
               placeholder="••••••"
               class="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#1E5AAA] focus:ring-2 focus:ring-[#1E5AAA]/20 border-gray-300"
               [class.border-red-400]="fieldError('password')"
             />
             @if (fieldError('password')) {
-              <p class="text-red-500 text-xs mt-0.5">Minimum 6 characters</p>
+              <p class="text-red-500 text-xs mt-0.5">Minimum {{ PASSWORD_MIN_LENGTH }} characters</p>
+            } @else if (!editingUser()) {
+              <p class="text-gray-400 text-xs mt-0.5">Defaults to the employee's last name.</p>
             }
           </div>
 

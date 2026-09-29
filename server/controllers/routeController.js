@@ -31,6 +31,15 @@ const updateRoute = async (req, res) => {
     return res
       .status(400)
       .json({ message: "Distance (km) is required and must be greater than 0." });
+  // Every stopover must stay strictly between the origin and the destination.
+  const farStop = await RouteStop.findOne({
+    where: { route_id: route.id, km_from_origin: { [Op.gte]: Number(distance_km) } },
+    order: [["km_from_origin", "DESC"]],
+  });
+  if (farStop)
+    return res.status(400).json({
+      message: `Stop "${farStop.name}" is at ${Number(farStop.km_from_origin)} km — the route distance must be greater than that. Move or remove the stop first.`,
+    });
   await route.update({ origin, destination, distance_km });
   return res.json(route);
 };

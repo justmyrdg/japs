@@ -12,6 +12,7 @@ const PassengerCount = require("./PassengerCountModel")(sequelize);
 const Ticket = require("./TicketModel")(sequelize);
 const Remittance = require("./RemittanceModel")(sequelize);
 const RemittanceExpense = require("./RemittanceExpenseModel")(sequelize);
+const TripExpense = require("./TripExpenseModel")(sequelize);
 
 // ── User ───────────────────────────────────────────────────────────────────
 User.hasMany(Trip, { foreignKey: "driver_id", as: "driverTrips" });
@@ -58,6 +59,7 @@ Trip.belongsTo(User, { foreignKey: "conductor_id", as: "conductor" });
 Trip.belongsTo(Remittance, { foreignKey: "remittance_id" });
 Trip.hasMany(PassengerCount, { foreignKey: "trip_id" });
 Trip.hasMany(Ticket, { foreignKey: "trip_id" });
+Trip.hasMany(TripExpense, { foreignKey: "trip_id" });
 
 // ── FareRate ───────────────────────────────────────────────────────────────
 FareRate.belongsTo(Route, { foreignKey: "route_id" });
@@ -79,6 +81,13 @@ Remittance.hasMany(RemittanceExpense, { foreignKey: "remittance_id" });
 // ── RemittanceExpense ──────────────────────────────────────────────────────
 RemittanceExpense.belongsTo(Remittance, { foreignKey: "remittance_id" });
 
+// ── TripExpense (conductor's expense log) ───────────────────────────────────
+TripExpense.belongsTo(Trip, { foreignKey: "trip_id" });
+TripExpense.belongsTo(BusModel, { foreignKey: "bus_id" });
+TripExpense.belongsTo(User, { foreignKey: "conductor_id", as: "conductor" });
+TripExpense.belongsTo(Remittance, { foreignKey: "remittance_id" });
+Remittance.hasMany(TripExpense, { foreignKey: "remittance_id" });
+
 module.exports = {
   sequelize,
   User,
@@ -93,4 +102,5 @@ module.exports = {
   Ticket,
   Remittance,
   RemittanceExpense,
+  TripExpense,
 };

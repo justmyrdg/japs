@@ -129,6 +129,34 @@ const sendTripsScheduledSummaryEmail = async ({ to, name, busLabel, date, trips 
 	await send(to, "New trips scheduled — JAPS", html);
 };
 
+// Notify owner-level staff (owner/secretary/admin staff) of trips scheduled for a crew.
+const sendTripsScheduledManagementEmail = async ({
+	to,
+	name,
+	busLabel,
+	date,
+	driverName,
+	conductorName,
+	trips,
+}) => {
+	const tripRows = trips
+		.map((t) =>
+			row(
+				`Trip #${t.tripNumber} (${t.routeLabel})`,
+				new Date(t.departureTime).toLocaleTimeString("en-PH", { timeStyle: "short" }),
+			),
+		)
+		.join("");
+	const html = renderEmail({
+		heading: "Trip Schedule Notice",
+		intro: `Hi ${name}, ${trips.length} trip${trips.length > 1 ? "s have" : " has"} been scheduled on bus ${busLabel} for ${new Date(date).toLocaleDateString("en-PH", { dateStyle: "medium" })}.`,
+		tableRows: row("Driver", driverName) + row("Conductor", conductorName) + tripRows,
+		ctaLabel: "View Schedules",
+		ctaUrl: LOGIN_URL(),
+	});
+	await send(to, `Trip schedule notice — Bus ${busLabel}`, html);
+};
+
 // Notify a driver/conductor that they've been assigned/unassigned to a bus.
 const sendCrewAssignmentEmail = async ({ to, name, role, busLabel, assigned }) => {
 	const html = renderEmail({
@@ -193,6 +221,7 @@ module.exports = {
 	sendAccountCredentialsEmail,
 	sendTripScheduledEmail,
 	sendTripsScheduledSummaryEmail,
+	sendTripsScheduledManagementEmail,
 	sendCrewAssignmentEmail,
 	sendRemittanceStatusEmail,
 	sendRemittanceSubmittedEmail,

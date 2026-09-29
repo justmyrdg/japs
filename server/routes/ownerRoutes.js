@@ -1,5 +1,5 @@
 const express = require("express");
-const { authenticate, authorize } = require("../middleware/auth");
+const { authenticate, authorize, OWNER_LEVEL_ROLES } = require("../middleware/auth");
 const { Op, fn, col, literal } = require("sequelize");
 const {
   Remittance,
@@ -12,9 +12,14 @@ const {
   PassengerCount,
   sequelize,
 } = require("../models");
+const {
+  buildDailyForecast,
+  buildUtilForecast,
+} = require("../services/forecast/buildForecast");
+const { buildInsights } = require("../services/insights/buildInsights");
 
 const router = express.Router();
-router.use(authenticate, authorize("owner", "secretary"));
+router.use(authenticate, authorize(...OWNER_LEVEL_ROLES));
 
 // GET /api/owner/dashboard
 // Optional ?from=YYYY-MM-DD&to=YYYY-MM-DD — filters the range-based KPIs and
@@ -47,6 +52,13 @@ router.get("/dashboard", async (req, res) => {
         where: {
           status: "approved",
           submitted_at: { [Op.between]: [rangeStart, rangeEnd] },
+        },
+      })) || 0;
+    const netGrossPrevRange =
+      (await Remittance.sum("net_gross", {
+        where: {
+          status: "approved",
+          submitted_at: { [Op.between]: [prevRangeStart, prevRangeEnd] },
         },
       })) || 0;
 
@@ -138,7 +150,8 @@ router.get("/dashboard", async (req, res) => {
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(now.getDate() - 30);
     const peakHoursRaw = await sequelize.query(
-      `SELECT EXTRACT(HOUR FROM issued_at)::int AS hour, COUNT(id) AS ticket_count
+      `SELECT EXTRACT(HOUR FROM issued_at)::int AS hour,
+              SUM(COALESCE(passenger_count, 1)) AS ticket_count
        FROM tickets
        WHERE issued_at >= :since
        GROUP BY EXTRACT(HOUR FROM issued_at)::int
@@ -185,7 +198,43 @@ router.get("/dashboard", async (req, res) => {
       },
     );
 
+    // ── Trip performance within the range (for insights) ──────────────────
+    const [tripPerf] = await sequelize.query(
+      `SELECT COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+              COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled,
+              COUNT(actual_departure_time) AS departures_recorded,
+              AVG(EXTRACT(EPOCH FROM (actual_departure_time - departure_time)) / 60)
+                FILTER (WHERE actual_departure_time IS NOT NULL) AS avg_delay_min
+       FROM trips
+       WHERE departure_time BETWEEN :start AND :end`,
+      {
+        replacements: { start: rangeStart, end: rangeEnd },
+        type: sequelize.QueryTypes.SELECT,
+      },
+    );
+
+    const insights = buildInsights({
+      passengersInRange: passengerCountInRange,
+      passengersPrevRange: passengerCountPrevRange,
+      passengerGrowthPct: passengerGrowth,
+      netGrossInRange,
+      netGrossPrevRange,
+      routeProfit,
+      peakHours: peakHoursRaw,
+      weekdayWeekend: weekdayWeekendRaw,
+      busUtilisationRate: busUtilRate,
+      totalBuses,
+      busesInUseToday,
+      remittancePending,
+      tripsCompleted: Number(tripPerf?.completed) || 0,
+      tripsCancelled: Number(tripPerf?.cancelled) || 0,
+      avgDepartureDelayMin:
+        tripPerf?.avg_delay_min != null ? Number(tripPerf.avg_delay_min) : null,
+      tripsWithActualDeparture: Number(tripPerf?.departures_recorded) || 0,
+    });
+
     return res.json({
+      insights,
       range: {
         from: rangeStart.toISOString().split("T")[0],
         to: rangeEnd.toISOString().split("T")[0],
@@ -294,40 +343,13 @@ router.get("/remittances/:id", async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GET /api/owner/forecast
-// Forecasting & predictive analytics — pure JS statistical methods, no ML lib
+// Forecasting & predictive analytics — ML (Random Forest) when enough data is
+// available, falling back to statistical methods otherwise (see
+// server/services/forecast/buildForecast.js).
 // ═══════════════════════════════════════════════════════════════════════════
 router.get("/forecast", async (req, res) => {
   try {
     const now = new Date();
-
-    // ── Helper: simple linear regression ────────────────────────────────
-    // Returns { slope, intercept, predict(x) }
-    function linearRegression(points) {
-      const n = points.length;
-      if (n < 2)
-        return {
-          slope: 0,
-          intercept: points[0]?.y ?? 0,
-          predict: (x) => points[0]?.y ?? 0,
-        };
-      const sumX = points.reduce((s, p) => s + p.x, 0);
-      const sumY = points.reduce((s, p) => s + p.y, 0);
-      const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
-      const sumX2 = points.reduce((s, p) => s + p.x * p.x, 0);
-      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-      const intercept = (sumY - slope * sumX) / n;
-      return { slope, intercept, predict: (x) => slope * x + intercept };
-    }
-
-    // ── Helper: exponential smoothing (alpha = 0.3) ──────────────────────
-    function expSmooth(values, alpha = 0.3) {
-      if (!values.length) return [];
-      const result = [values[0]];
-      for (let i = 1; i < values.length; i++) {
-        result.push(alpha * values[i] + (1 - alpha) * result[i - 1]);
-      }
-      return result;
-    }
 
     // ── 1. Daily passenger data – last 90 days ───────────────────────────
     const ninetyDaysAgo = new Date(now);
@@ -348,7 +370,7 @@ router.get("/forecast", async (req, res) => {
     // Build dense daily array (fill gaps with 0)
     const dailyMap = {};
     for (const r of dailyRaw) {
-      dailyMap[r.date.toString().split("T")[0]] = Number(r.total);
+      dailyMap[r.date.toISOString().split("T")[0]] = Number(r.total);
     }
     const dailyDense = [];
     for (let i = 89; i >= 0; i--) {
@@ -362,44 +384,21 @@ router.get("/forecast", async (req, res) => {
       });
     }
 
-    // ── 2. Day-of-week seasonal factors ─────────────────────────────────
-    const dowTotals = Array(7).fill(0);
-    const dowCounts = Array(7).fill(0);
-    for (const d of dailyDense) {
-      dowTotals[d.dow] += d.passengers;
-      dowCounts[d.dow]++;
-    }
-    const dowAvg = dowTotals.map((t, i) =>
-      dowCounts[i] > 0 ? t / dowCounts[i] : 0,
-    );
-    const globalAvg = dowAvg.reduce((s, v) => s + v, 0) / 7 || 1;
-    const seasonalFactors = dowAvg.map((v) => v / globalAvg);
-
-    // ── 3. Deseasonalised linear regression for passenger trend ──────────
-    const deseason = dailyDense.map((d, i) => ({
-      x: i,
-      y:
-        seasonalFactors[d.dow] > 0
-          ? d.passengers / seasonalFactors[d.dow]
-          : d.passengers,
+    // ── 2-4. Passenger trend + seasonality + 7-day forecast (ML or fallback) ─
+    const passengerRows = dailyDense.map((d) => ({
+      date: d.date,
+      value: d.passengers,
     }));
-    const passengerLR = linearRegression(deseason);
-
-    // ── 4. Forecast next 7 days (passengers) ────────────────────────────
-    const passengerForecast7 = [];
-    for (let i = 1; i <= 7; i++) {
-      const dt = new Date(now);
-      dt.setDate(dt.getDate() + i);
-      const x = dailyDense.length - 1 + i;
-      const trendVal = passengerLR.predict(x);
-      const seasonal = seasonalFactors[dt.getDay()];
-      const predicted = Math.max(0, Math.round(trendVal * seasonal));
-      passengerForecast7.push({
-        date: dt.toISOString().split("T")[0],
-        predicted,
-        dow: dt.getDay(),
-      });
-    }
+    const passengerResult = buildDailyForecast(passengerRows, {
+      daysAhead: 7,
+      useSeasonalBlend: false,
+    });
+    const seasonalFactors = passengerResult.seasonalFactors;
+    const passengerForecast7 = passengerResult.predictions.map((p) => ({
+      date: p.date,
+      predicted: p.predicted,
+      dow: new Date(`${p.date}T00:00:00`).getDay(),
+    }));
 
     // ── 5. Revenue data – last 90 days ───────────────────────────────────
     const revenueRaw = await sequelize.query(
@@ -416,32 +415,19 @@ router.get("/forecast", async (req, res) => {
 
     const revMap = {};
     for (const r of revenueRaw)
-      revMap[r.date.toString().split("T")[0]] = Number(r.revenue);
+      revMap[r.date.toISOString().split("T")[0]] = Number(r.revenue);
     const revDense = [];
     for (let i = 89; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      revDense.push({
-        x: 89 - i,
-        y: revMap[d.toISOString().split("T")[0]] ?? 0,
-      });
+      const key = d.toISOString().split("T")[0];
+      revDense.push({ date: key, value: revMap[key] ?? 0 });
     }
-    const revenueLR = linearRegression(revDense);
-
-    // ── 6. Forecast next 7 days (revenue) ───────────────────────────────
-    const revenueForecast7 = [];
-    for (let i = 1; i <= 7; i++) {
-      const dt = new Date(now);
-      dt.setDate(dt.getDate() + i);
-      // Blend linear trend with day-of-week passenger factor as proxy
-      const trendRev = Math.max(0, revenueLR.predict(89 + i));
-      const dowFactor = seasonalFactors[dt.getDay()];
-      const predicted = Math.round(trendRev * (0.7 + 0.3 * dowFactor));
-      revenueForecast7.push({
-        date: dt.toISOString().split("T")[0],
-        predicted,
-      });
-    }
+    const revenueResult = buildDailyForecast(revDense, {
+      daysAhead: 7,
+      useSeasonalBlend: true,
+    });
+    const revenueForecast7 = revenueResult.predictions;
 
     // ── 7. Predicted revenue / passengers tomorrow (single KPI) ─────────
     const tomorrowDow = new Date(now);
@@ -469,7 +455,7 @@ router.get("/forecast", async (req, res) => {
           ).toFixed(1)
         : null;
 
-    // ── 8. Bus utilisation forecast (exp. smoothing on last 30 days) ─────
+    // ── 8. Bus utilisation forecast (ML or exponential-smoothing fallback) ──
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(now.getDate() - 30);
     const utilRaw = await sequelize.query(
@@ -481,7 +467,7 @@ router.get("/forecast", async (req, res) => {
        ORDER BY t.departure_time::date ASC`,
       {
         replacements: {
-          since: thirtyDaysAgo,
+          since: ninetyDaysAgo,
           total: Math.max(
             1,
             await BusModel.count({ where: { status: "active" } }),
@@ -490,11 +476,12 @@ router.get("/forecast", async (req, res) => {
         type: sequelize.QueryTypes.SELECT,
       },
     );
-    const utilValues = utilRaw.map((r) => Number(r.util_pct));
-    const smoothedUtil = expSmooth(utilValues);
-    const predictedUtilTomorrow = smoothedUtil.length
-      ? Math.min(100, Math.round(smoothedUtil[smoothedUtil.length - 1]))
-      : 0;
+    const utilRows = utilRaw.map((r) => ({
+      date: r.date.toISOString().split("T")[0],
+      value: Number(r.util_pct),
+    }));
+    const utilResult = buildUtilForecast(utilRows);
+    const predictedUtilTomorrow = utilResult.predictedTomorrow;
 
     // ── 9. Peak hours forecast (average by hour across last 30 days) ──────
     const peakForecast = await sequelize.query(
@@ -503,7 +490,7 @@ router.get("/forecast", async (req, res) => {
        FROM (
          SELECT DATE(issued_at) AS day,
                 EXTRACT(HOUR FROM issued_at)::int AS hour,
-                COUNT(*) AS daily_count
+                SUM(COALESCE(passenger_count, 1)) AS daily_count
          FROM tickets
          WHERE issued_at >= :since
          GROUP BY DATE(issued_at), EXTRACT(HOUR FROM issued_at)
@@ -543,6 +530,11 @@ router.get("/forecast", async (req, res) => {
         dow: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][i],
         factor: Number(f.toFixed(3)),
       })),
+      forecast_method: {
+        passengers: passengerResult.method,
+        revenue: revenueResult.method,
+        utilisation: utilResult.method,
+      },
     });
   } catch (error) {
     console.error("Forecast error:", error);

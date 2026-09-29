@@ -10,9 +10,9 @@ const {
   updateRouteStop,
   deleteRouteStop,
 } = require("../controllers/routeController");
-const { authenticate, authorize } = require("../middleware/auth");
+const { authenticate, authorize, OWNER_LEVEL_ROLES } = require("../middleware/auth");
 
-router.use(authenticate, authorize("owner", "secretary"));
+router.use(authenticate, authorize(...OWNER_LEVEL_ROLES));
 
 router.get("/", getRoutes);
 router.post("/", createRoute);

@@ -31,6 +31,10 @@ export const CONDUCTOR_ROUTES: Routes = [
         loadComponent: () => import('./pages/tickets').then((m) => m.TicketsPage),
       },
       {
+        path: 'expenses',
+        loadComponent: () => import('./pages/expenses/expenses').then((m) => m.ConductorExpensesPage),
+      },
+      {
         path: 'remittances',
         loadComponent: () =>
           import('./pages/remittances/remittances').then((m) => m.ConductorRemittancesPage),

@@ -55,6 +55,12 @@ module.exports = (sequelize) => {
         type: DataTypes.DATE,
         allowNull: false,
       },
+      // When the trip actually left (set when the conductor starts it) — departure_time
+      // above is the scheduled time.
+      actual_departure_time: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
       arrival_time: {
         type: DataTypes.DATE,
         allowNull: true,

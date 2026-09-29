@@ -48,7 +48,7 @@
         <div class="px-2 py-2 mb-1">
           <p class="text-xs text-white/60">Logged in as</p>
           <p class="text-sm font-medium truncate">{{ user?.first_name }} {{ user?.last_name }}</p>
-          <p class="text-xs text-white/50 capitalize">{{ user?.role }}</p>
+          <p class="text-xs text-white/50">{{ roleLabel() }}</p>
         </div>
       }
       <button

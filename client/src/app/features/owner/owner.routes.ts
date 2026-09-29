@@ -2,12 +2,13 @@ import { Routes } from '@angular/router';
 import { OwnerLayout } from './layout/owner-layout/owner-layout';
 import { authGuard } from '../../core/guards/auth.guard';
 import { roleGuard } from '../../core/guards/role.guard';
+import { OWNER_LEVEL_ROLES } from '../../shared/constants/user-options';
 
 export const OWNER_ROUTES: Routes = [
   {
     path: '',
     component: OwnerLayout,
-    canActivate: [authGuard, roleGuard('owner', 'secretary')],
+    canActivate: [authGuard, roleGuard(...OWNER_LEVEL_ROLES)],
     children: [
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
       {

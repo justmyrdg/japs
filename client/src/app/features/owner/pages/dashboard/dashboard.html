@@ -68,6 +68,8 @@
     <p class="text-sm">Failed to load dashboard data.</p>
   </div>
 } @else {
+  <div class="flex flex-col xl:flex-row gap-6 items-start">
+  <div class="flex-1 min-w-0 w-full">
   <!-- ── KPI Cards (actual + tomorrow forecast side by side) ─────────── -->
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     <!-- Net Gross in selected range -->
@@ -414,7 +416,7 @@
               <span class="text-sm text-gray-700 font-medium">{{ peakLabel(ph.hour) }}</span>
               <div class="flex items-center gap-3">
                 <span class="text-xs text-gray-400"
-                  >~{{ ph.avg_tickets | number: '1.0-0' }} tickets/hr avg</span
+                  >~{{ ph.avg_tickets | number: '1.0-0' }} passengers/hr avg</span
                 >
                 <span class="text-sm" [class]="peakLevel(i).cls">{{ peakLevel(i).label }}</span>
               </div>
@@ -526,5 +528,37 @@
       </div>
     </div>
   }
+  </div>
+
+  <!-- ── Insights (right column; stacks below on smaller screens) ───────── -->
+  <aside class="w-full xl:w-80 shrink-0 xl:sticky xl:top-4">
+    <div class="bg-white rounded-xl border border-gray-200 p-5">
+      <h3 class="font-semibold text-gray-800 flex items-center gap-2 mb-1">
+        <i class="pi pi-lightbulb text-amber-500"></i> Insights
+      </h3>
+      <p class="text-xs text-gray-400 mb-4">What the numbers above are saying for this period.</p>
+      @if (insights().length === 0) {
+        <p class="text-sm text-gray-400">
+          Not enough data yet — insights appear as trips, tickets and remittances are recorded.
+        </p>
+      } @else {
+        <ul class="space-y-3">
+          @for (insight of insights(); track insight.title) {
+            <li class="flex gap-3 rounded-lg p-3" [class]="insightStyle(insight.tone).bg">
+              <i
+                class="pi text-sm mt-0.5 shrink-0"
+                [class]="insightStyle(insight.tone).icon + ' ' + insightStyle(insight.tone).text"
+              ></i>
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-gray-800">{{ insight.title }}</p>
+                <p class="text-xs text-gray-600 mt-0.5 leading-relaxed">{{ insight.message }}</p>
+              </div>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  </aside>
+  </div>
 }
 <!-- end @else -->

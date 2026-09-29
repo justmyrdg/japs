@@ -110,6 +110,8 @@ const getRemittanceById = async (req, res) => {
                 "id",
                 "ticket_number",
                 "category",
+                "passengers",
+                "passenger_count",
                 "boarding_point",
                 "boarding_km",
                 "dropping_point",

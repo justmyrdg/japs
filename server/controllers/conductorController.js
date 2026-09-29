@@ -10,26 +10,42 @@ const {
   Ticket,
   Remittance,
   RemittanceExpense,
+  TripExpense,
   sequelize,
 } = require("../models");
+const EXPENSE_TYPES = require("../models/expenseTypes");
 const { fullName, sendRemittanceSubmittedEmail } = require("../config/mailer");
 
 const notify = (promise) => promise.catch((err) => console.error("Email notification failed:", err));
 
 // GET /api/conductor/trips
-// Returns completed unremitted trips for a bus on a date (for remittance submission)
+// Returns completed unremitted trips for a bus on a date (for remittance submission).
+// With includeOpen=1 it also returns that day's scheduled/ongoing trips, so a conductor
+// who didn't use ticketing can remit them with manually encoded counts. Each trip then
+// carries `ticket_count` so the client knows which ones need manual entry.
 const getAssignedTrips = async (req, res) => {
   try {
     const conductorId = req.user.id;
-    const { date, busId } = req.query;
+    const { date, busId, includeOpen } = req.query;
+    const withOpen = includeOpen === "1" || includeOpen === "true";
 
-    // If date + busId provided, return completed unremitted trips for that bus/date
+    // If date + busId provided, return unremitted trips for that bus/date
     if (date && busId) {
       const trips = await Trip.findAll({
+        attributes: {
+          include: [
+            [
+              sequelize.literal(
+                '(SELECT COUNT(*) FROM tickets AS tk WHERE tk.trip_id = "Trip"."id")',
+              ),
+              "ticket_count",
+            ],
+          ],
+        },
         where: {
           bus_id: busId,
           conductor_id: conductorId,
-          status: "completed",
+          status: withOpen ? ["scheduled", "ongoing", "completed"] : "completed",
           remittance_id: null,
           departure_time: {
             [Op.gte]: new Date(date + "T00:00:00"),
@@ -114,6 +130,7 @@ const updateTripStatus = async (req, res) => {
 
     const updateData = { status };
     if (status === "ongoing") {
+      updateData.actual_departure_time = new Date();
       // Enforce that the trip's scheduled date matches today
       if (trip.departure_time) {
         const tripDate = new Date(trip.departure_time);
@@ -244,6 +261,24 @@ const getDiscountPercent = (category, settings) => {
   }
 };
 
+const PASSENGER_CATEGORIES = ["regular", "student", "senior_citizen", "pwd", "discounted"];
+
+// Normalises a ticket request body into [{ category, quantity }] with quantity > 0.
+// Accepts the group form `passengers: [{ category, quantity }]` and the legacy
+// single-passenger form `category`. Returns null when the input is invalid.
+const parsePassengerGroup = ({ passengers, category }) => {
+  const raw = Array.isArray(passengers) ? passengers : category ? [{ category, quantity: 1 }] : [];
+  const totals = new Map();
+  for (const p of raw) {
+    const quantity = Number(p?.quantity);
+    if (!PASSENGER_CATEGORIES.includes(p?.category)) return null;
+    if (!Number.isInteger(quantity) || quantity < 0) return null;
+    if (quantity > 0) totals.set(p.category, (totals.get(p.category) ?? 0) + quantity);
+  }
+  if (totals.size === 0) return null;
+  return [...totals].map(([cat, quantity]) => ({ category: cat, quantity }));
+};
+
 const findStopByKm = (stops, km) =>
   stops.find((s) => Math.abs(Number(s.km_from_origin) - Number(km)) < 0.01);
 
@@ -269,14 +304,23 @@ const getRouteStopsForConductor = async (req, res) => {
 };
 
 // POST /api/conductor/trips/:id/tickets
-// Encode and simulate printing a ticket. Distance and fare are derived and
+// Encode and print one ticket for a group of passengers travelling together
+// (e.g. 1 student + 1 regular + 1 senior) — body: { boarding_km, dropping_km,
+// passengers: [{ category, quantity }] }. Distance and fares are derived and
 // verified server-side from the trip's route stops — the client only picks
-// which two stops (by km_from_origin) the passenger boarded/alighted at.
+// which two stops (by km_from_origin) the group boarded/alighted at.
 const printTicket = async (req, res) => {
+  const group = parsePassengerGroup(req.body);
+  if (!group) {
+    return res.status(400).json({
+      message: "Add at least one passenger (whole numbers only, valid categories).",
+    });
+  }
+
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
-    const { category, boarding_km, dropping_km } = req.body;
+    const { boarding_km, dropping_km } = req.body;
     const conductorId = req.user.id;
 
     const trip = await Trip.findOne({
@@ -348,23 +392,37 @@ const printTicket = async (req, res) => {
       distance_km <= baseDistanceKm
         ? minFare
         : minFare + (distance_km - baseDistanceKm) * ratePerKm;
-    const discountPercent = getDiscountPercent(category, fareSettings);
-    const fare = parseFloat((baseFare * (1 - discountPercent / 100)).toFixed(2));
 
-    // 1. Auto-generate ticket number (last for this trip + 1, starting at 1)
+    const passengers = group.map(({ category, quantity }) => {
+      const discountPercent = getDiscountPercent(category, fareSettings);
+      const unitFare = parseFloat((baseFare * (1 - discountPercent / 100)).toFixed(2));
+      return {
+        category,
+        quantity,
+        unit_fare: unitFare,
+        subtotal: parseFloat((unitFare * quantity).toFixed(2)),
+      };
+    });
+    const fare = parseFloat(passengers.reduce((sum, p) => sum + p.subtotal, 0).toFixed(2));
+    const passengerCount = passengers.reduce((sum, p) => sum + p.quantity, 0);
+
+    // 1. Auto-generate ticket number (last for this trip + 1, starting at 1).
+    // ticket_number is a STRING column, so order numerically rather than lexically.
     const lastTicket = await Ticket.findOne({
       where: { trip_id: id },
-      order: [["ticket_number", "DESC"]],
+      order: [[sequelize.cast(sequelize.col("ticket_number"), "INTEGER"), "DESC"]],
       transaction,
     });
     const ticketNumber = lastTicket ? Number(lastTicket.ticket_number) + 1 : 1;
 
-    // 2. Create individual ticket record
+    // 2. Create one ticket record for the whole group
     const ticket = await Ticket.create(
       {
         trip_id: id,
         ticket_number: ticketNumber,
-        category,
+        category: passengers.length === 1 ? passengers[0].category : null,
+        passengers,
+        passenger_count: passengerCount,
         boarding_point: boardingStop.name,
         boarding_km: boardingStop.km_from_origin,
         dropping_point: droppingStop.name,
@@ -392,15 +450,18 @@ const printTicket = async (req, res) => {
       { transaction },
     );
 
-    // 5. Increment Passenger Count Category
-    const [pc, created] = await PassengerCount.findOrCreate({
-      where: { trip_id: id, category },
-      defaults: { count: 0 },
-      transaction,
-    });
-
-    await pc.increment("count", { by: 1, transaction });
-    await pc.reload({ transaction });
+    // 5. Increment the trip's passenger count for each category on the ticket
+    const passengerCounts = [];
+    for (const { category, quantity } of passengers) {
+      const [pc] = await PassengerCount.findOrCreate({
+        where: { trip_id: id, category },
+        defaults: { count: 0 },
+        transaction,
+      });
+      await pc.increment("count", { by: quantity, transaction });
+      await pc.reload({ transaction });
+      passengerCounts.push(pc);
+    }
 
     await transaction.commit();
 
@@ -413,7 +474,7 @@ const printTicket = async (req, res) => {
         ticket_number_start: ticketStart,
         ticket_number_end: ticketEnd,
       },
-      passengerCount: pc,
+      passengerCounts,
     });
   } catch (error) {
     await transaction.rollback();
@@ -479,8 +540,184 @@ const getTickets = async (req, res) => {
   }
 };
 
+// YYYY-MM-DD in server-local time (matches how trip dates are bucketed elsewhere).
+const toLocalDateString = (d) => {
+  const date = new Date(d);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+const expenseIncludes = [
+  {
+    model: Trip,
+    attributes: ["id", "trip_number", "departure_time"],
+    include: [{ model: Route, attributes: ["origin", "destination"] }],
+  },
+  { model: BusModel, attributes: ["id", "bus_number", "plate_number"] },
+];
+
+// POST /api/conductor/expenses
+// Log one expense as it happens. Body: { trip_id, expense_type, amount, ticket_number?, notes? }.
+// Bus and date come from the trip, so the entry can later be matched to that day's remittance.
+const createExpense = async (req, res) => {
+  try {
+    const conductorId = req.user.id;
+    const { trip_id, expense_type, amount, ticket_number, notes } = req.body;
+
+    if (!EXPENSE_TYPES.includes(expense_type)) {
+      return res.status(400).json({ message: "Select a valid expense type." });
+    }
+    const value = Number(amount);
+    if (!(value > 0)) {
+      return res.status(400).json({ message: "Amount must be greater than 0." });
+    }
+    if (!trip_id) {
+      return res.status(400).json({ message: "Select the trip this expense belongs to." });
+    }
+
+    const trip = await Trip.findOne({ where: { id: trip_id, conductor_id: conductorId } });
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found or not assigned to you." });
+    }
+
+    const ticketRef = ticket_number != null && String(ticket_number).trim() !== ""
+      ? String(ticket_number).trim().replace(/^#/, "")
+      : null;
+    if (ticketRef) {
+      const ticket = await Ticket.findOne({ where: { trip_id: trip.id, ticket_number: ticketRef } });
+      if (!ticket) {
+        return res.status(400).json({
+          message: `Ticket #${ticketRef} was not issued on trip #${trip.trip_number}.`,
+        });
+      }
+    }
+
+    const expense = await TripExpense.create({
+      conductor_id: conductorId,
+      trip_id: trip.id,
+      bus_id: trip.bus_id,
+      date: toLocalDateString(trip.departure_time),
+      expense_type,
+      amount: value,
+      ticket_number: ticketRef,
+      notes: notes?.trim() || null,
+    });
+
+    const created = await TripExpense.findByPk(expense.id, { include: expenseIncludes });
+    return res.status(201).json(created);
+  } catch (error) {
+    console.error("Error creating expense:", error);
+    return res.status(500).json({ message: "Internal server error." });
+  }
+};
+
+// GET /api/conductor/expenses?date=YYYY-MM-DD&busId=&tripId=&unremitted=1
+const getExpenses = async (req, res) => {
+  try {
+    const { date, busId, tripId, unremitted } = req.query;
+    const where = { conductor_id: req.user.id };
+    if (date) where.date = date;
+    if (busId) where.bus_id = busId;
+    if (tripId) where.trip_id = tripId;
+    if (unremitted === "1" || unremitted === "true") where.remittance_id = null;
+
+    const expenses = await TripExpense.findAll({
+      where,
+      include: expenseIncludes,
+      order: [["created_at", "DESC"]],
+    });
+    return res.json(expenses);
+  } catch (error) {
+    console.error("Error fetching expenses:", error);
+    return res.status(500).json({ message: "Internal server error." });
+  }
+};
+
+// DELETE /api/conductor/expenses/:id — only while it hasn't been remitted yet.
+const deleteExpense = async (req, res) => {
+  try {
+    const expense = await TripExpense.findOne({
+      where: { id: req.params.id, conductor_id: req.user.id },
+    });
+    if (!expense) return res.status(404).json({ message: "Expense not found." });
+    if (expense.remittance_id) {
+      return res
+        .status(400)
+        .json({ message: "This expense is already part of a submitted remittance." });
+    }
+    await expense.destroy();
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error deleting expense:", error);
+    return res.status(500).json({ message: "Internal server error." });
+  }
+};
+
+// Applies manually encoded results to trips that were run without the ticketing
+// terminal: sets the collection as the trip total, replaces its passenger counts and
+// marks it completed. Returns an error message for the client, or null on success.
+const applyManualTripEntries = async (trips, manualTrips, transaction) => {
+  for (const entry of manualTrips) {
+    const trip = trips.find((t) => t.id === Number(entry?.trip_id));
+    if (!trip) return "A manually encoded trip is not part of this remittance.";
+
+    const ticketCount = await Ticket.count({ where: { trip_id: trip.id }, transaction });
+    if (ticketCount > 0) {
+      return `Trip #${trip.trip_number} already has issued tickets — its totals come from those tickets.`;
+    }
+
+    const collection = Number(entry.collection);
+    if (!Number.isFinite(collection) || collection < 0) {
+      return `Enter a valid cash collection for trip #${trip.trip_number}.`;
+    }
+    const counts = Array.isArray(entry.passenger_counts) ? entry.passenger_counts : [];
+    for (const c of counts) {
+      if (!PASSENGER_CATEGORIES.includes(c?.category)) {
+        return `Invalid passenger category on trip #${trip.trip_number}.`;
+      }
+      if (!Number.isInteger(Number(c.count)) || Number(c.count) < 0) {
+        return `Passenger counts on trip #${trip.trip_number} must be whole numbers.`;
+      }
+    }
+
+    const departed = entry.actual_departure_time ? new Date(entry.actual_departure_time) : null;
+    const arrived = entry.arrival_time ? new Date(entry.arrival_time) : null;
+    if ((departed && isNaN(departed)) || (arrived && isNaN(arrived))) {
+      return `Invalid departure/arrival time on trip #${trip.trip_number}.`;
+    }
+    if (departed && arrived && arrived < departed) {
+      return `Trip #${trip.trip_number} can't arrive before it departed.`;
+    }
+
+    await PassengerCount.destroy({ where: { trip_id: trip.id }, transaction });
+    for (const c of counts) {
+      if (Number(c.count) > 0) {
+        await PassengerCount.create(
+          { trip_id: trip.id, category: c.category, count: Number(c.count) },
+          { transaction },
+        );
+      }
+    }
+
+    await trip.update(
+      {
+        grand_total: collection,
+        status: "completed",
+        actual_departure_time:
+          departed ?? trip.actual_departure_time ?? trip.departure_time,
+        arrival_time: arrived ?? trip.arrival_time ?? new Date(),
+      },
+      { transaction },
+    );
+  }
+  return null;
+};
+
 // POST /api/conductor/remittances
-// Submit expenses and operational reports
+// Submit expenses and operational reports. Trips run without the ticketing terminal can
+// be included with `manual_trips: [{ trip_id, passenger_counts: [{ category, count }],
+// collection, actual_departure_time?, arrival_time? }]`; logged TripExpense entries the
+// remittance covers are passed as `expense_ids` and get linked to it.
 const submitRemittance = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
@@ -490,7 +727,9 @@ const submitRemittance = async (req, res) => {
       driver_id,
       date,
       trip_ids, // array of trip IDs completed
-      expenses, // array of { expense_type, amount }
+      expenses = [], // array of { expense_type, amount }
+      manual_trips = [],
+      expense_ids = [],
       driver_commission = 0,
       conductor_commission = 0,
       bonus_allowance = 0,
@@ -521,6 +760,23 @@ const submitRemittance = async (req, res) => {
       return res
         .status(404)
         .json({ message: "No valid trips found for remittance." });
+    }
+
+    const manualError = await applyManualTripEntries(
+      trips,
+      Array.isArray(manual_trips) ? manual_trips : [],
+      transaction,
+    );
+    if (manualError) {
+      await transaction.rollback();
+      return res.status(400).json({ message: manualError });
+    }
+    const unfinished = trips.find((t) => t.status !== "completed");
+    if (unfinished) {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: `Trip #${unfinished.trip_number} isn't completed — finish it or encode its passengers and collection manually.`,
+      });
     }
 
     // A prior rejected remittance for the same bus/date/conductor means this is a resubmission.
@@ -592,6 +848,21 @@ const submitRemittance = async (req, res) => {
       );
     }
 
+    // Mark the logged expenses this remittance covers so they aren't pre-filled again.
+    if (Array.isArray(expense_ids) && expense_ids.length > 0) {
+      await TripExpense.update(
+        { remittance_id: remittance.id },
+        {
+          where: {
+            id: { [Op.in]: expense_ids },
+            conductor_id: conductorId,
+            remittance_id: null,
+          },
+          transaction,
+        },
+      );
+    }
+
     await transaction.commit();
 
     notify(
@@ -599,7 +870,7 @@ const submitRemittance = async (req, res) => {
         const [bus, conductor, reviewers] = await Promise.all([
           BusModel.findByPk(bus_id),
           User.findByPk(conductorId),
-          User.findAll({ where: { role: ["owner", "audit_teller"], is_active: true } }),
+          User.findAll({ where: { role: ["owner", "admin_staff", "audit_teller"], is_active: true } }),
         ]);
         for (const reviewer of reviewers) {
           await sendRemittanceSubmittedEmail({
@@ -681,4 +952,7 @@ module.exports = {
   getTickets,
   submitRemittance,
   getRemittances,
+  createExpense,
+  getExpenses,
+  deleteExpense,
 };

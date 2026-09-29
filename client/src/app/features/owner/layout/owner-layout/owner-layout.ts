@@ -40,7 +40,9 @@ export class OwnerLayout {
   }
 
   roleLabel(): string {
-    return this.user?.role === 'secretary' ? 'Secretary' : 'Owner';
+    if (this.user?.role === 'secretary') return 'Secretary';
+    if (this.user?.role === 'admin_staff') return 'Admin Staff';
+    return 'Owner';
   }
 
   logoutMessage(): string {

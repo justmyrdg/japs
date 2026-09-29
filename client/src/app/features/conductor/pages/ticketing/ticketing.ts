@@ -6,6 +6,7 @@ import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { AlertService } from '../../../../core/services/alert.service';
 import { PrinterSetupService } from '../../../../core/services/printer-setup.service';
 import { environment } from '../../../../../environments/environment';
+import { TicketPassengerLine } from '../../../../shared/models/ticket.models';
 
 export interface Trip {
   id: number;
@@ -51,6 +52,24 @@ export interface RouteStopPoint {
   km_from_origin: number;
 }
 
+export const PASSENGER_CATEGORIES = [
+  'regular',
+  'student',
+  'senior_citizen',
+  'pwd',
+  'discounted',
+] as const;
+export type PassengerCategory = (typeof PASSENGER_CATEGORIES)[number];
+
+/** Default passenger mix for a new ticket: one regular passenger. */
+const DEFAULT_QUANTITIES: Record<PassengerCategory, number> = {
+  regular: 1,
+  student: 0,
+  senior_citizen: 0,
+  pwd: 0,
+  discounted: 0,
+};
+
 @Component({
   selector: 'app-ticketing',
   imports: [ReactiveFormsModule, CurrencyPipe, DatePipe, DecimalPipe],
@@ -77,6 +96,38 @@ export class TicketingPage implements OnInit {
   ticketForm: FormGroup;
   isPrinting = signal(false);
 
+  readonly CATEGORIES = PASSENGER_CATEGORIES;
+  // Mirror of the form's value as a signal so fares below can be computed reactively.
+  private formValue = signal<any>({});
+
+  /** Full fare for the selected stops, before any category discount. */
+  baseFare = computed(() => {
+    const settings = this.fareSettings();
+    const { boarding_km, dropping_km } = this.formValue();
+    if (!settings || boarding_km == null || dropping_km == null) return 0;
+    const distance = Math.abs(Number(dropping_km) - Number(boarding_km));
+    if (distance <= 0) return 0;
+    const minFare = Number(settings.minimum_fare);
+    const baseDistanceKm = Number(settings.base_distance_km);
+    const ratePerKm = Number(settings.rate_per_km);
+    return distance <= baseDistanceKm ? minFare : minFare + (distance - baseDistanceKm) * ratePerKm;
+  });
+
+  /** Per-category lines for the passengers currently encoded (quantity > 0 only).
+   *  Same formula as the server's printTicket, which recomputes and is authoritative. */
+  fareLines = computed<TicketPassengerLine[]>(() => {
+    const quantities = this.formValue().quantities ?? {};
+    const base = this.baseFare();
+    return PASSENGER_CATEGORIES.map((category) => {
+      const quantity = Math.max(0, Math.floor(Number(quantities[category]) || 0));
+      const unitFare = this.unitFare(category, base);
+      return { category, quantity, unit_fare: unitFare, subtotal: +(unitFare * quantity).toFixed(2) };
+    }).filter((l) => l.quantity > 0);
+  });
+
+  totalPassengers = computed(() => this.fareLines().reduce((sum, l) => sum + l.quantity, 0));
+  totalFare = computed(() => +this.fareLines().reduce((sum, l) => sum + l.subtotal, 0).toFixed(2));
+
   // Thermal print modal
   showPrintModal = signal(false);
   lastPrintedTicket = signal<any | null>(null);
@@ -84,11 +135,18 @@ export class TicketingPage implements OnInit {
 
   constructor() {
     this.ticketForm = this.fb.group({
-      category: ['regular', Validators.required],
       boarding_km: [null, Validators.required],
       dropping_km: [null, Validators.required],
-      fare: [0, [Validators.required, Validators.min(0)]],
+      quantities: this.fb.group(
+        Object.fromEntries(
+          PASSENGER_CATEGORIES.map((c) => [c, [DEFAULT_QUANTITIES[c], [Validators.min(0)]]]),
+        ),
+      ),
     });
+    this.formValue.set(this.ticketForm.getRawValue());
+    this.ticketForm.valueChanges.subscribe(() =>
+      this.formValue.set(this.ticketForm.getRawValue()),
+    );
   }
 
   ngOnInit(): void {
@@ -103,19 +161,12 @@ export class TicketingPage implements OnInit {
       });
     });
 
-    // Auto-calculate fare when category or the selected stops change
-    this.ticketForm.get('category')?.valueChanges.subscribe(() => {
-      this.autoCalculateFare();
-    });
+    // Boarding and dropping can't be the same stop.
     this.ticketForm.get('boarding_km')?.valueChanges.subscribe((val) => {
       const droppingKm = this.ticketForm.get('dropping_km')?.value;
       if (droppingKm !== null && Number(droppingKm) === Number(val)) {
-        this.ticketForm.patchValue({ dropping_km: null }, { emitEvent: false });
+        this.ticketForm.patchValue({ dropping_km: null });
       }
-      this.autoCalculateFare();
-    });
-    this.ticketForm.get('dropping_km')?.valueChanges.subscribe(() => {
-      this.autoCalculateFare();
     });
   }
 
@@ -126,8 +177,6 @@ export class TicketingPage implements OnInit {
         next: (data) => {
           console.log('Fare settings loaded successfully:', data);
           this.fareSettings.set(data);
-          // Trigger calculation after settings are loaded
-          this.autoCalculateFare();
         },
         error: (err) => {
           console.error('Failed to load fare settings:', err);
@@ -150,10 +199,9 @@ export class TicketingPage implements OnInit {
   selectTrip(tripId: number): void {
     this.selectedTripId.set(tripId);
     this.loadPassengerCounts(tripId);
-    this.ticketForm.patchValue({ boarding_km: null, dropping_km: null }, { emitEvent: false });
+    this.ticketForm.patchValue({ boarding_km: null, dropping_km: null });
     const routeId = this.selectedTrip()?.Route?.id;
     if (routeId) this.loadRouteStops(routeId);
-    this.autoCalculateFare();
   }
 
   loadRouteStops(routeId: number): void {
@@ -191,28 +239,22 @@ export class TicketingPage implements OnInit {
       });
   }
 
-  autoCalculateFare(): void {
-    const settings = this.fareSettings();
-    if (!settings) return;
+  private unitFare(category: string, base: number): number {
+    return parseFloat((base * (1 - this.getDiscountPercent(category) / 100)).toFixed(2));
+  }
 
-    const distance = this.computeDistance();
-    if (distance <= 0) {
-      this.ticketForm.patchValue({ fare: 0 }, { emitEvent: false });
-      return;
-    }
+  quantity(category: string): number {
+    return Number(this.formValue().quantities?.[category]) || 0;
+  }
 
-    const minFare = Number(settings.minimum_fare);
-    const baseDistanceKm = Number(settings.base_distance_km);
-    const ratePerKm = Number(settings.rate_per_km);
+  changeQuantity(category: string, delta: number): void {
+    const control = this.ticketForm.get(['quantities', category]);
+    if (!control) return;
+    control.setValue(Math.max(0, Math.floor(Number(control.value) || 0) + delta));
+  }
 
-    const baseFare =
-      distance <= baseDistanceKm ? minFare : minFare + (distance - baseDistanceKm) * ratePerKm;
-
-    const category = this.ticketForm.get('category')?.value;
-    const discountPercent = this.getDiscountPercent(category, settings);
-
-    const finalFare = parseFloat((baseFare * (1 - discountPercent / 100)).toFixed(2));
-    this.ticketForm.patchValue({ fare: finalFare }, { emitEvent: false });
+  categoryUnitFare(category: string): number {
+    return this.unitFare(category, this.baseFare());
   }
 
   printTicketSubmit(): void {
@@ -220,16 +262,20 @@ export class TicketingPage implements OnInit {
       this.ticketForm.markAllAsTouched();
       return;
     }
+    if (this.totalPassengers() === 0) {
+      this.alertService.error('No passengers', 'Add at least one passenger to the ticket.');
+      return;
+    }
 
     const tripId = this.selectedTripId();
     if (!tripId) return;
 
     this.isPrinting.set(true);
-    const formValue = this.ticketForm.value;
+    const formValue = this.ticketForm.getRawValue();
     const payload = {
-      category: formValue.category,
       boarding_km: formValue.boarding_km,
       dropping_km: formValue.dropping_km,
+      passengers: this.fareLines().map(({ category, quantity }) => ({ category, quantity })),
     };
 
     this.http
@@ -237,20 +283,25 @@ export class TicketingPage implements OnInit {
       .subscribe({
         next: async (res) => {
           this.isPrinting.set(false);
+          // Receipt shows the server's figures (it recomputes fares authoritatively).
+          const passengers: TicketPassengerLine[] = res.ticket?.passengers ?? this.fareLines();
           const printed = {
             ticketNumber: res.ticket?.ticket_number,
-            category: payload.category,
+            passengers,
+            passengerCount:
+              res.ticket?.passenger_count ?? passengers.reduce((sum, l) => sum + l.quantity, 0),
             boardingPoint: res.ticket?.boarding_point,
             droppingPoint: res.ticket?.dropping_point,
             distance: res.ticket?.distance_km,
             fare: res.ticket?.fare,
-            discountPercent: this.getDiscountPercent(payload.category),
             date: new Date(),
             route: this.selectedTrip()?.Route,
             bus: this.selectedTrip()?.BusModel,
           };
           this.lastPrintedTicket.set(printed);
           this.showPrintModal.set(true);
+          // Ready for the next group: the stops are kept, the passenger mix resets.
+          this.ticketForm.get('quantities')?.reset(DEFAULT_QUANTITIES);
 
           // Wait for the modal (and its receipt content ref) to actually render.
           await this.waitForRender();

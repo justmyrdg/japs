@@ -3,11 +3,20 @@ import { HttpClient } from '@angular/common/http';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { environment } from '../../../../../environments/environment';
 import { TablePagination } from '../../../../shared/components/table-pagination/table-pagination';
+import {
+  TicketPassengerLine,
+  passengerCategoryLabel,
+  ticketPassengerCount,
+  ticketPassengerSummary,
+  ticketPassengers,
+} from '../../../../shared/models/ticket.models';
 
 interface Ticket {
   id: number;
   ticket_number: string;
-  category: string;
+  category: string | null;
+  passengers: TicketPassengerLine[] | null;
+  passenger_count: number | null;
   distance_km: number;
   fare: number;
   issued_at: string;
@@ -84,7 +93,7 @@ export class TicketsPage implements OnInit {
         t.Trip.driver.last_name.toLowerCase().includes(q) ||
         t.Trip.conductor.first_name.toLowerCase().includes(q) ||
         t.Trip.conductor.last_name.toLowerCase().includes(q);
-      const matchCat = cat === 'all' || t.category === cat;
+      const matchCat = cat === 'all' || ticketPassengers(t).some((l) => l.category === cat);
 
       // Date filtering
       const ticketDate = new Date(t.issued_at);
@@ -99,8 +108,8 @@ export class TicketsPage implements OnInit {
     const field = this.sortField();
     const dir = this.sortDir();
     return [...this.filtered()].sort((a, b) => {
-      let av: any = a[field];
-      let bv: any = b[field];
+      let av: any = field === 'category' ? this.passengerSummary(a) : a[field];
+      let bv: any = field === 'category' ? this.passengerSummary(b) : b[field];
       if (field === 'fare' || field === 'ticket_number') {
         av = Number(av);
         bv = Number(bv);
@@ -200,14 +209,21 @@ export class TicketsPage implements OnInit {
   }
 
   getCategoryLabel(cat: string): string {
-    const labels: Record<string, string> = {
-      regular: 'Regular',
-      student: 'Student',
-      senior_citizen: 'Senior Citizen',
-      pwd: 'PWD',
-      discounted: 'Discounted',
-    };
-    return labels[cat] ?? cat;
+    return passengerCategoryLabel(cat);
+  }
+
+  /** e.g. "1 Regular · 2 Student" (works for group and older single-passenger tickets). */
+  passengerSummary(t: Ticket): string {
+    return ticketPassengerSummary(t);
+  }
+
+  passengerCount(t: Ticket): number {
+    return ticketPassengerCount(t);
+  }
+
+  /** All-regular tickets keep the blue badge; anything with a discount is green. */
+  isAllRegular(t: Ticket): boolean {
+    return ticketPassengers(t).every((l) => l.category === 'regular');
   }
 
   getTotalRevenue(): number {

@@ -1,0 +1,218 @@
+<!-- Page header -->
+<div class="flex flex-wrap items-end justify-between gap-3 mb-6">
+  <div>
+    <h2 class="text-xl font-semibold text-gray-800">Expenses</h2>
+    <p class="text-sm text-gray-400 mt-0.5">
+      Log trip expenses as they happen — they're pre-filled when you submit your remittance.
+    </p>
+  </div>
+  <div>
+    <label class="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1"
+      >Date</label
+    >
+    <input
+      type="date"
+      [value]="selectedDate()"
+      (change)="onDateChange($event)"
+      class="text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#1E5AAA] text-gray-700 bg-white"
+    />
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+  <!-- Encode expense -->
+  <form
+    [formGroup]="form"
+    (ngSubmit)="submit()"
+    novalidate
+    class="lg:col-span-2 bg-white rounded-lg shadow-sm p-5 space-y-4 self-start"
+  >
+    <h3 class="font-semibold text-gray-800 flex items-center gap-2">
+      <i class="pi pi-wallet text-[#1E5AAA]"></i> Encode Expense
+    </h3>
+
+    <!-- Trip reference -->
+    <div>
+      <label class="block text-xs font-medium text-gray-600 mb-1"
+        >Trip <span class="text-red-500">*</span></label
+      >
+      <select
+        formControlName="trip_id"
+        class="w-full text-sm border rounded-lg px-3 py-2.5 outline-none focus:border-[#1E5AAA] bg-white text-gray-700 border-gray-300"
+        [class.border-red-400]="fieldError('trip_id')"
+      >
+        <option [ngValue]="null" disabled>— Select a trip —</option>
+        @for (t of tripsForDate(); track t.id) {
+          <option [ngValue]="t.id">{{ tripLabel(t) }}</option>
+        }
+      </select>
+      @if (tripsForDate().length === 0) {
+        <p class="text-xs text-gray-400 mt-1">You have no trips on this date.</p>
+      } @else if (fieldError('trip_id')) {
+        <p class="text-red-500 text-xs mt-0.5">Select the trip this expense belongs to.</p>
+      }
+    </div>
+
+    <!-- Passenger totals for the referenced trip -->
+    @if (selectedTrip()) {
+      <div class="rounded-lg bg-blue-50/60 border border-blue-100 px-4 py-3">
+        <p class="text-[11px] font-semibold text-[#1E5AAA] uppercase tracking-wider mb-1.5">
+          Trip #{{ selectedTrip()!.trip_number }} passengers
+        </p>
+        @if (loadingPassengers()) {
+          <p class="text-xs text-gray-500">Loading…</p>
+        } @else if (tripPassengers().length === 0) {
+          <p class="text-xs text-gray-500">No passengers recorded on this trip yet.</p>
+        } @else {
+          <p class="text-sm text-gray-700">
+            @for (c of tripPassengers(); track c.category; let last = $last) {
+              <span class="whitespace-nowrap"
+                >{{ categoryLabel(c.category) }}: <b>{{ c.count }}</b></span
+              >@if (!last) {
+                <span class="text-gray-300"> · </span>
+              }
+            }
+          </p>
+          <p class="text-xs text-gray-500 mt-1">Total: {{ totalTripPassengers() }} passengers</p>
+        }
+      </div>
+    }
+
+    <!-- Ticket reference -->
+    <div>
+      <label class="block text-xs font-medium text-gray-600 mb-1"
+        >Ticket No. <span class="text-gray-400 font-normal">(optional)</span></label
+      >
+      <input
+        formControlName="ticket_number"
+        type="text"
+        inputmode="numeric"
+        placeholder="e.g. 12"
+        class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2.5 outline-none focus:border-[#1E5AAA]"
+      />
+      <p class="text-[11px] text-gray-400 mt-0.5">
+        Link the expense to a specific ticket issued on this trip.
+      </p>
+    </div>
+
+    <!-- Expense type -->
+    <div>
+      <label class="block text-xs font-medium text-gray-600 mb-1"
+        >Expense Type <span class="text-red-500">*</span></label
+      >
+      <select
+        formControlName="expense_type"
+        class="w-full text-sm border rounded-lg px-3 py-2.5 outline-none focus:border-[#1E5AAA] bg-white text-gray-700 border-gray-300"
+        [class.border-red-400]="fieldError('expense_type')"
+      >
+        <option value="" disabled>— Select type —</option>
+        @for (t of EXPENSE_TYPES; track t.value) {
+          <option [value]="t.value">{{ t.label }}</option>
+        }
+      </select>
+      @if (fieldError('expense_type')) {
+        <p class="text-red-500 text-xs mt-0.5">Required</p>
+      }
+    </div>
+
+    <!-- Amount -->
+    <div>
+      <label class="block text-xs font-medium text-gray-600 mb-1"
+        >Amount (₱) <span class="text-red-500">*</span></label
+      >
+      <input
+        formControlName="amount"
+        type="number"
+        min="0"
+        step="0.01"
+        inputmode="decimal"
+        class="w-full text-sm border rounded-lg px-3 py-2.5 outline-none focus:border-[#1E5AAA] border-gray-300"
+        [class.border-red-400]="fieldError('amount')"
+      />
+      @if (fieldError('amount')) {
+        <p class="text-red-500 text-xs mt-0.5">Enter an amount greater than 0.</p>
+      }
+    </div>
+
+    <!-- Notes -->
+    <div>
+      <label class="block text-xs font-medium text-gray-600 mb-1"
+        >Notes <span class="text-gray-400 font-normal">(optional)</span></label
+      >
+      <textarea
+        formControlName="notes"
+        rows="2"
+        placeholder="e.g. SLEX toll, Calamba exit"
+        class="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-[#1E5AAA] resize-none"
+      ></textarea>
+    </div>
+
+    <button
+      type="submit"
+      [disabled]="isSubmitting()"
+      class="w-full bg-[#1E5AAA] hover:bg-[#174d93] text-white text-sm font-semibold py-2.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+    >
+      {{ isSubmitting() ? 'Submitting…' : 'Submit Expense' }}
+    </button>
+  </form>
+
+  <!-- Logged expenses for the date -->
+  <div class="lg:col-span-3 bg-white rounded-lg shadow-sm overflow-hidden self-start">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <h3 class="font-semibold text-gray-800">
+        Logged on {{ selectedDate() | date: 'mediumDate' }}
+      </h3>
+      <span class="text-sm font-semibold text-gray-700">{{ totalLogged() | currency: 'PHP' }}</span>
+    </div>
+
+    @if (loadingExpenses()) {
+      <div class="py-12 text-center text-sm text-gray-400">Loading…</div>
+    } @else if (expenses().length === 0) {
+      <div class="py-12 text-center text-sm text-gray-400">No expenses logged for this date.</div>
+    } @else {
+      <ul class="divide-y divide-gray-100">
+        @for (e of expenses(); track e.id) {
+          <li class="flex items-start justify-between gap-3 px-5 py-3">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-800">{{ expenseLabel(e.expense_type) }}</p>
+              <p class="text-xs text-gray-500 mt-0.5">
+                @if (e.Trip) {
+                  Trip #{{ e.Trip.trip_number }}
+                  @if (e.Trip.Route) {
+                    · {{ e.Trip.Route.origin }} → {{ e.Trip.Route.destination }}
+                  }
+                }
+                @if (e.ticket_number) {
+                  · Ticket #{{ e.ticket_number }}
+                }
+              </p>
+              @if (e.notes) {
+                <p class="text-xs text-gray-400 mt-0.5 break-words">{{ e.notes }}</p>
+              }
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <div class="text-right">
+                <p class="text-sm font-semibold text-gray-800">{{ e.amount | currency: 'PHP' }}</p>
+                @if (e.remittance_id) {
+                  <span class="text-[10px] font-semibold text-green-700">Remitted</span>
+                } @else {
+                  <span class="text-[10px] font-semibold text-amber-600">Not yet remitted</span>
+                }
+              </div>
+              @if (!e.remittance_id) {
+                <button
+                  type="button"
+                  (click)="deleteExpense(e)"
+                  class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                  title="Remove"
+                >
+                  <i class="pi pi-trash text-sm"></i>
+                </button>
+              }
+            </div>
+          </li>
+        }
+      </ul>
+    }
+  </div>
+</div>

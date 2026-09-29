@@ -21,4 +21,8 @@ const authorize = (...roles) => {
 	};
 };
 
-module.exports = { authenticate, authorize };
+// Roles with full owner-portal access. `secretary` and `admin_staff` are
+// functionally interchangeable with `owner` (see CLAUDE.md).
+const OWNER_LEVEL_ROLES = ["owner", "secretary", "admin_staff"];
+
+module.exports = { authenticate, authorize, OWNER_LEVEL_ROLES };

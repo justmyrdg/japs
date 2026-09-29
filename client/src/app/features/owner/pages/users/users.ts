@@ -95,11 +95,14 @@ export class Users implements OnInit {
 
   readonly SUFFIXES = NAME_SUFFIXES;
   readonly ROLES = USER_ROLES;
+  // Generated passwords are the employee's last name (client request), so this has to
+  // allow short surnames like "Go" or "Uy".
+  readonly PASSWORD_MIN_LENGTH = 2;
 
   form: FormGroup = this.fb.group({
     employee_id: ['', Validators.required],
     username: ['', Validators.required],
-    password: ['', Validators.minLength(6)],
+    password: ['', Validators.minLength(this.PASSWORD_MIN_LENGTH)],
     role: ['conductor', Validators.required],
     first_name: ['', Validators.required],
     middle_name: [''],
@@ -112,6 +115,50 @@ export class Users implements OnInit {
 
   ngOnInit(): void {
     this.loadUsers();
+    this.form.get('first_name')!.valueChanges.subscribe(() => this.suggestCredentials());
+    this.form.get('last_name')!.valueChanges.subscribe(() => this.suggestCredentials());
+  }
+
+  // ── Generated credentials (new users only) ────────────────────────────
+  /** Next employee number following the highest existing one, keeping its prefix and
+   *  zero-padding (e.g. EMP-0007 -> EMP-0008). */
+  nextEmployeeId(): string {
+    let best: { prefix: string; num: number; width: number } | null = null;
+    for (const u of this.allUsers()) {
+      const m = /^(.*?)(\d+)$/.exec(u.employee_id ?? '');
+      if (!m) continue;
+      const num = Number(m[2]);
+      if (!best || num > best.num) best = { prefix: m[1], num, width: m[2].length };
+    }
+    if (!best) return 'EMP-0001';
+    return `${best.prefix}${String(best.num + 1).padStart(best.width, '0')}`;
+  }
+
+  /** Fills username (first initial + last name) and password (last name) from the name
+   *  fields, but only while the owner hasn't typed into those fields themselves. */
+  private suggestCredentials(): void {
+    if (this.editingUser()) return;
+    const letters = (v: unknown) =>
+      String(v ?? '')
+        .toLowerCase()
+        .replace(/[^a-z]/g, '');
+    const first = letters(this.form.get('first_name')!.value);
+    const last = letters(this.form.get('last_name')!.value);
+
+    const username = this.form.get('username')!;
+    if (!username.dirty) {
+      username.setValue(last ? this.uniqueUsername(`${first.charAt(0)}${last}`) : '');
+    }
+    const password = this.form.get('password')!;
+    if (!password.dirty) password.setValue(last);
+  }
+
+  private uniqueUsername(base: string): string {
+    const taken = new Set(this.allUsers().map((u) => u.username.toLowerCase()));
+    if (!taken.has(base)) return base;
+    let n = 2;
+    while (taken.has(`${base}${n}`)) n++;
+    return `${base}${n}`;
   }
 
   loadUsers(): void {
@@ -171,8 +218,10 @@ export class Users implements OnInit {
   // ── CRUD ──────────────────────────────────────────────────────────────
   openAdd(): void {
     this.editingUser.set(null);
-    this.form.reset({ role: 'conductor', is_active: true });
-    this.form.get('password')!.setValidators([Validators.required, Validators.minLength(6)]);
+    this.form.reset({ role: 'conductor', is_active: true, employee_id: this.nextEmployeeId() });
+    this.form
+      .get('password')!
+      .setValidators([Validators.required, Validators.minLength(this.PASSWORD_MIN_LENGTH)]);
     this.form.get('password')!.updateValueAndValidity();
     this.showModal.set(true);
   }
@@ -180,7 +229,7 @@ export class Users implements OnInit {
   openEdit(user: User): void {
     this.editingUser.set(user);
     this.form.patchValue({ ...user, password: '' });
-    this.form.get('password')!.setValidators(Validators.minLength(6));
+    this.form.get('password')!.setValidators(Validators.minLength(this.PASSWORD_MIN_LENGTH));
     this.form.get('password')!.updateValueAndValidity();
     this.showModal.set(true);
   }

@@ -109,16 +109,7 @@ export class PrinterSetupService {
       throw new Error('Printer not connected.');
     }
 
-    const canvas = await html2canvas(element, {
-      backgroundColor: '#ffffff',
-      scale: 1,
-      onclone: (_doc, cloned) => {
-        // The on-screen preview scrolls (max-h/overflow-auto); capture it in full instead.
-        cloned.style.maxHeight = 'none';
-        cloned.style.overflow = 'visible';
-      },
-    });
-
+    const canvas = await this.captureAtPrinterWidth(element);
     const resized = this.resizeToWidth(canvas, PRINTER_WIDTH_DOTS);
     const bitmap = this.toMonochromeBitmap(resized);
 
@@ -142,14 +133,14 @@ export class PrinterSetupService {
   async printSampleTicketImage(): Promise<void> {
     const el = document.createElement('div');
     el.style.cssText =
-      'position:fixed; left:-9999px; top:0; width:280px; padding:16px; background:#fff; color:#000; font-family:monospace; font-size:12px; text-align:center;';
+      'position:fixed; left:-9999px; top:0; padding:16px 8px; background:#fff; color:#000; font-size:20px; font-weight:500; text-align:center;';
     el.innerHTML = `
-      <div style="font-weight:bold; font-size:14px;">JAPS TRANSIT</div>
-      <div>Bus Operations &amp; Ticketing</div>
-      <div>${new Date().toLocaleString()}</div>
-      <div style="border-top:1px dashed #000; margin:8px 0;"></div>
-      <div>*** TEST PRINT ***</div>
-      <div style="border-top:1px dashed #000; margin:8px 0;"></div>
+      <div style="font-weight:bold; font-size:24px;">JAPS TRANSIT</div>
+      <div style="font-size:18px;">Bus Operations &amp; Ticketing</div>
+      <div style="font-size:18px;">${new Date().toLocaleString()}</div>
+      <div style="border-top:2px dashed #000; margin:12px 0;"></div>
+      <div style="font-weight:bold;">*** TEST PRINT ***</div>
+      <div style="border-top:2px dashed #000; margin:12px 0;"></div>
       <div>If you can read this clearly, your printer is set up correctly.</div>
     `;
     document.body.appendChild(el);
@@ -157,6 +148,27 @@ export class PrinterSetupService {
       await this.printTicketImage(el);
     } finally {
       document.body.removeChild(el);
+    }
+  }
+
+  /** Captures an off-screen copy of `element` laid out exactly PRINTER_WIDTH_DOTS CSS px
+   *  wide at scale 1, so one CSS pixel is one printer dot on every device. Capturing the
+   *  on-screen element directly would make the printed size depend on the phone's screen
+   *  width, and the stretch to 384 dots blurs text before it's thresholded to 1-bit. */
+  private async captureAtPrinterWidth(element: HTMLElement): Promise<HTMLCanvasElement> {
+    const copy = element.cloneNode(true) as HTMLElement;
+    copy.style.position = 'fixed';
+    copy.style.left = '-10000px';
+    copy.style.top = '0';
+    copy.style.width = `${PRINTER_WIDTH_DOTS}px`;
+    // The on-screen preview scrolls (max-h/overflow-auto); capture it in full instead.
+    copy.style.maxHeight = 'none';
+    copy.style.overflow = 'visible';
+    document.body.appendChild(copy);
+    try {
+      return await html2canvas(copy, { backgroundColor: '#ffffff', scale: 1 });
+    } finally {
+      copy.remove();
     }
   }
 

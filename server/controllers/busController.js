@@ -4,8 +4,10 @@ const {
   fullName,
   sendTripScheduledEmail,
   sendTripsScheduledSummaryEmail,
+  sendTripsScheduledManagementEmail,
   sendCrewAssignmentEmail,
 } = require("../config/mailer");
+const { OWNER_LEVEL_ROLES } = require("../middleware/auth");
 
 const notify = (promise) => promise.catch((err) => console.error("Email notification failed:", err));
 
@@ -222,6 +224,34 @@ const notifyTripScheduled = async ({ bus_id, route_id, driver_id, conductor_id, 
       }),
     );
   }
+
+  await notifyManagementOfSchedule({
+    busLabel,
+    date: departure_time,
+    driver,
+    conductor,
+    trips: [{ tripNumber: trip_number, routeLabel, departureTime: departure_time }],
+  });
+};
+
+// Copy owner-level staff (owner/secretary/admin staff) on every newly scheduled crew trip.
+const notifyManagementOfSchedule = async ({ busLabel, date, driver, conductor, trips }) => {
+  const managers = await User.findAll({
+    where: { role: OWNER_LEVEL_ROLES, is_active: true },
+  });
+  for (const manager of managers) {
+    notify(
+      sendTripsScheduledManagementEmail({
+        to: manager.email,
+        name: fullName(manager),
+        busLabel,
+        date,
+        driverName: driver ? fullName(driver) : "Unassigned",
+        conductorName: conductor ? fullName(conductor) : "Unassigned",
+        trips,
+      }),
+    );
+  }
 };
 
 // POST /api/buses/trips
@@ -322,6 +352,8 @@ const createTripsBulk = async (req, res) => {
           }),
         );
       }
+
+      await notifyManagementOfSchedule({ busLabel, date, driver, conductor, trips: tripSummaries });
     })(),
   );
 
