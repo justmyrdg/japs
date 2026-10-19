@@ -31,7 +31,7 @@
     <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-md border border-gray-100">
       <div class="flex items-center gap-2 border-b border-gray-100 pb-4 mb-5">
         <i class="pi pi-ticket text-blue-500 text-xl"></i>
-        <h3 class="font-bold text-gray-800 text-lg">Encode Ticket</h3>
+        <h3 class="font-bold text-gray-800 text-lg">Ticketing</h3>
       </div>
 
       <form [formGroup]="ticketForm" (ngSubmit)="printTicketSubmit()" class="space-y-5">
@@ -40,7 +40,7 @@
           class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3"
         >
           <span class="text-xs font-bold text-gray-500 uppercase tracking-wider"
-            >Next Ticket #</span
+            >Ticket #</span
           >
           <span class="font-black text-gray-800 text-lg">
             @if (selectedTrip()?.ticket_number_end) {
@@ -115,7 +115,7 @@
                 </div>
               </div>
             }
-          </div>
+          </div> 
         </div>
 
         <!-- Boarding Point -->
@@ -210,7 +210,7 @@
         >
           <i class="pi pi-print text-base md:text-lg"></i>
           <span class="truncate">{{
-            isPrinting() ? 'Generating...' : 'Generate & Print Ticket'
+            isPrinting() ? 'Generating...' : 'Print Ticket'
           }}</span>
         </button>
       </form>
@@ -234,12 +234,6 @@
             <div>
               <span class="text-[10px] text-gray-400 block mb-0.5">Bus Number</span>
               <span class="font-bold text-white">{{ selectedTrip()?.BusModel?.bus_number }}</span>
-            </div>
-            <div>
-              <span class="text-[10px] text-gray-400 block mb-0.5">Plate Number</span>
-              <span class="font-mono font-semibold text-white">{{
-                selectedTrip()?.BusModel?.plate_number
-              }}</span>
             </div>
           </div>
           <div class="pt-3 border-t border-white/10 flex items-center justify-between">
@@ -335,17 +329,20 @@
         <!-- Store Header -->
         <div class="text-center space-y-1">
           <img src="assets/images/JAPS (black).png" alt="JAPS" class="h-14 mx-auto" />
-          <h4 class="text-2xl">JAPS Transport Services</h4>
-          <p class="text-lg">{{ lastPrintedTicket()?.date | date: 'medium' }}</p>
+          <p class="text-lg"> {{ lastPrintedTicket()?.date | date: 'medium' }}</p>
         </div>
 
         <div class="border-t-2 border-dashed border-black"></div>
 
         <!-- Ticket Number and Metadata -->
         <div class="space-y-1">
-          <div class="flex justify-between gap-2 font-bold text-2xl">
+          <div class="flex justify-between gap-2 text-2xl">
             <span>TICKET NO:</span>
             <span>#{{ lastPrintedTicket()?.ticketNumber }}</span>
+          </div>
+          <div class="flex justify-between gap-2">
+            <span>BUS NO:</span>
+            <span class="text-right">{{ lastPrintedTicket()?.bus?.bus_number }}</span>
           </div>
           <div class="flex justify-between gap-2">
             <span>PLATE NO:</span>
@@ -353,11 +350,11 @@
           </div>
           <div class="flex justify-between gap-2">
             <span>FROM:</span>
-            <span class="text-right font-bold">{{ lastPrintedTicket()?.boardingPoint }}</span>
+            <span class="text-right">{{ lastPrintedTicket()?.boardingPoint }}</span>
           </div>
           <div class="flex justify-between gap-2">
             <span>TO:</span>
-            <span class="text-right font-bold">{{ lastPrintedTicket()?.droppingPoint }}</span>
+            <span class="text-right">{{ lastPrintedTicket()?.droppingPoint }}</span>
           </div>
         </div>
 
@@ -371,12 +368,12 @@
               <span class="text-right">₱{{ line.subtotal | number: '1.2-2' }}</span>
             </div>
           }
-          <div class="flex justify-between gap-2 font-bold">
+          <div class="flex justify-between gap-2">
             <span>PASSENGERS:</span>
             <span class="text-right">{{ lastPrintedTicket()?.passengerCount }}</span>
           </div>
-          <div class="flex justify-between gap-2 font-bold text-2xl pt-2 border-t-2 border-black">
-            <span>TOTAL:</span>
+          <div class="flex justify-between gap-2 text-2xl mt-2 pt-2 border-t-2 border-black">
+            <span>TOTAL AMOUNT:</span>
             <span class="text-right">₱{{ lastPrintedTicket()?.fare | number: '1.2-2' }}</span>
           </div>
         </div>
@@ -384,8 +381,8 @@
         <div class="border-t-2 border-dashed border-black"></div>
 
         <div class="text-center text-lg">
-          <p>Thank you for riding JAPS Transit!</p>
-          <p class="font-bold text-base uppercase mt-1">Please keep this ticket for validation</p>
+          <p>Thank you for riding with us!</p>
+          <p class=" text-sm uppercase mt-1">Please keep this ticket</p>
         </div>
 
         <!-- Trailing blank space — gives room to cut the paper without clipping
@@ -402,13 +399,6 @@
           class="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-150 rounded-xl transition-all cursor-pointer"
         >
           Dismiss
-        </button>
-        <button
-          (click)="reprintReceipt()"
-          [disabled]="isSendingToPrinter()"
-          class="px-5 py-2 text-xs font-bold bg-[#0F2942] hover:bg-[#1C3E61] text-white rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <i class="pi pi-print"></i> {{ isSendingToPrinter() ? 'Printing...' : 'Reprint Receipt' }}
         </button>
       </div>
     </div>

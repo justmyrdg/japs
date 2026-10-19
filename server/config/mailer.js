@@ -18,7 +18,7 @@ const LOGO_PATH = path.join(
 	"public",
 	"assets",
 	"images",
-	"JAPS (black).png",
+	"JAPS (white).png",
 );
 const LOGO_ATTACHMENT = { filename: "japs-logo.png", path: LOGO_PATH, cid: "japslogo" };
 const LOGIN_URL = () => process.env.CLIENT_URL || "http://localhost:2736";
@@ -155,7 +155,7 @@ const sendTripsScheduledManagementEmail = async ({
 		.join("");
 	const html = renderEmail({
 		heading: "Trip Schedule Notice",
-		intro: `Hi ${name}, ${trips.length} trip${trips.length > 1 ? "s have" : " has"} been scheduled on bus ${busLabel} for ${new Date(date).toLocaleDateString("en-PH", { dateStyle: "medium" })}.`,
+		intro: `Good Day, ${trips.length} trip${trips.length > 1 ? "s have" : " has"} been scheduled on bus ${busLabel} for ${new Date(date).toLocaleDateString("en-PH", { dateStyle: "medium" })}.`,
 		tableRows: row("Driver", driverName) + row("Conductor", conductorName) + tripRows,
 		ctaLabel: "View Schedules",
 		ctaUrl: LOGIN_URL(),

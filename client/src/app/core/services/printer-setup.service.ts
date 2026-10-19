@@ -17,11 +17,6 @@ const GS = 0x1d;
 // 58mm thermal paper prints at 384 dots wide.
 const PRINTER_WIDTH_DOTS = 384;
 
-// Pause after the wake-up/initialize command before any image data is sent. A printer
-// that has been idle drops or mangles the bytes that arrive while it is still waking,
-// and a raster image that loses bytes prints as garbage and stalls partway.
-const WAKE_DELAY_MS = 300;
-
 @Injectable({ providedIn: 'root' })
 export class PrinterSetupService {
   private _configured = signal<boolean>(localStorage.getItem(STORAGE_KEY) === 'true');
@@ -31,10 +26,6 @@ export class PrinterSetupService {
 
   private device: BluetoothDevice | null = null;
   private characteristic: BluetoothRemoteGATTCharacteristic | null = null;
-
-  // Print jobs are sent one after another: two jobs writing chunks at the same time
-  // would interleave their bytes and corrupt both receipts.
-  private printQueue: Promise<void> = Promise.resolve();
 
   isConfigured(): boolean {
     return this._configured();
@@ -126,29 +117,23 @@ export class PrinterSetupService {
       new Uint8Array([ESC, 0x40]), // initialize
       new Uint8Array([ESC, 0x61, 0x01]), // center align
       this.buildRasterImageCommand(bitmap),
-      new Uint8Array([ESC, 0x64, 0x08]), // feed 8 lines — extra blank paper so cutting doesn't clip the ticket
+      new Uint8Array([ESC, 0x64, 0x01]), // feed 1 line
     ]);
 
-    const job = this.printQueue.then(() => this.sendToPrinter(payload));
-    this.printQueue = job.catch(() => {});
-    return job;
-  }
+    const chunkSize = 180;
+    const delayMs = 10;
+    const useNoResponse =
+      !!this.characteristic.properties.writeWithoutResponse &&
+      typeof (this.characteristic as any).writeValueWithoutResponse === 'function';
 
-  private async sendToPrinter(payload: Uint8Array): Promise<void> {
-    const characteristic = this.characteristic;
-    if (!characteristic) {
-      throw new Error('Printer not connected.');
-    }
-
-    // Wake the printer and give it time to be ready before the image data starts.
-    await characteristic.writeValue(new Uint8Array([ESC, 0x40]));
-    await new Promise((resolve) => setTimeout(resolve, WAKE_DELAY_MS));
-
-    const chunkSize = 100;
     for (let i = 0; i < payload.length; i += chunkSize) {
       const chunk = payload.slice(i, i + chunkSize);
-      await characteristic.writeValue(chunk);
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      if (useNoResponse) {
+        await (this.characteristic as any).writeValueWithoutResponse(chunk);
+      } else {
+        await this.characteristic.writeValue(chunk);
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
 
@@ -159,7 +144,8 @@ export class PrinterSetupService {
     el.style.cssText =
       'position:fixed; left:-9999px; top:0; padding:16px 8px; background:#fff; color:#000; font-size:20px; font-weight:500; text-align:center;';
     el.innerHTML = `
-      <div style="font-size:24px;">JAPS Transport Services</div>
+      <div style="font-weight:bold; font-size:24px;">JAPS TRANSIT</div>
+      <div style="font-size:18px;">Bus Operations &amp; Ticketing</div>
       <div style="font-size:18px;">${new Date().toLocaleString()}</div>
       <div style="border-top:2px dashed #000; margin:12px 0;"></div>
       <div style="font-weight:bold;">*** TEST PRINT ***</div>
@@ -316,5 +302,5 @@ export class PrinterSetupService {
       offset += b.length;
     }
     return out;
-  }
+  } 
 }

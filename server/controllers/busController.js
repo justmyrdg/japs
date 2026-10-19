@@ -8,8 +8,24 @@ const {
   sendCrewAssignmentEmail,
 } = require("../config/mailer");
 const { OWNER_LEVEL_ROLES } = require("../middleware/auth");
+const { createNotification } = require("../services/notificationService");
 
 const notify = (promise) => promise.catch((err) => console.error("Email notification failed:", err));
+
+// Friendly date/time text for in-app notifications (Philippine time).
+const formatDate = (value) =>
+  new Date(value).toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "Asia/Manila",
+  });
+const formatTime = (value) =>
+  new Date(value).toLocaleTimeString("en-PH", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "Asia/Manila",
+  });
 
 const busInclude = [
   {
@@ -118,6 +134,8 @@ const assignCrew = async (req, res) => {
   });
 
   const busLabel = bus.bus_number;
+  // Drivers and conductors each get a bell notification, linking to their own portal.
+  const crewLink = (role) => (role === "driver" ? "/driver/dashboard" : "/conductor/trips");
   const notifyCrewChange = async (previousId, newId, role) => {
     if (previousId === newId) return;
     if (previousId) {
@@ -132,6 +150,13 @@ const assignCrew = async (req, res) => {
             assigned: false,
           }),
         );
+        await createNotification({
+          userId: prevUser.id,
+          type: "crew_unassigned",
+          title: "Bus assignment removed",
+          message: `You are no longer assigned to Bus ${busLabel}.`,
+          link: crewLink(role),
+        });
       }
     }
     if (newId) {
@@ -146,6 +171,13 @@ const assignCrew = async (req, res) => {
             assigned: true,
           }),
         );
+        await createNotification({
+          userId: newUser.id,
+          type: "crew_assigned",
+          title: "Assigned to a bus",
+          message: `You have been assigned as ${role} of Bus ${busLabel}.`,
+          link: crewLink(role),
+        });
       }
     }
   };
@@ -210,6 +242,21 @@ const notifyTripScheduled = async ({ bus_id, route_id, driver_id, conductor_id, 
   ]);
   const busLabel = bus?.bus_number ?? String(bus_id);
   const routeLabel = route ? `${route.origin} → ${route.destination}` : "";
+
+  // In-app notification for the conductor and the driver.
+  for (const [person, link] of [
+    [conductor, "/conductor/trips"],
+    [driver, "/driver/dashboard"],
+  ]) {
+    if (!person) continue;
+    await createNotification({
+      userId: person.id,
+      type: "schedule_assigned",
+      title: "New schedule assigned",
+      message: `Trip #${trip_number}${routeLabel ? " · " + routeLabel : ""} · Bus ${busLabel} on ${formatDate(departure_time)} at ${formatTime(departure_time)}.`,
+      link,
+    });
+  }
 
   for (const user of [driver, conductor]) {
     if (!user) continue;
@@ -340,6 +387,22 @@ const createTripsBulk = async (req, res) => {
         departureTime: t.departure_time,
       }));
 
+      // One in-app notification for the whole batch (not one per trip).
+      const count = created.length;
+      for (const [person, link] of [
+        [conductor, "/conductor/trips"],
+        [driver, "/driver/dashboard"],
+      ]) {
+        if (!person) continue;
+        await createNotification({
+          userId: person.id,
+          type: "schedule_assigned",
+          title: count === 1 ? "New schedule assigned" : `${count} new trips scheduled`,
+          message: `Bus ${busLabel} on ${formatDate(date)}: ${count} trip${count === 1 ? "" : "s"}, first departure at ${formatTime(created[0].departure_time)}.`,
+          link,
+        });
+      }
+
       for (const user of [driver, conductor]) {
         if (!user) continue;
         notify(
@@ -364,7 +427,25 @@ const createTripsBulk = async (req, res) => {
 const deleteTrip = async (req, res) => {
   const trip = await Trip.findByPk(req.params.id);
   if (!trip) return res.status(404).json({ message: "Trip not found." });
+
+  // Keep the details before the row is gone.
+  const { conductor_id, driver_id, trip_number, departure_time } = trip;
   await trip.destroy();
+
+  for (const [userId, link] of [
+    [conductor_id, "/conductor/trips"],
+    [driver_id, "/driver/dashboard"],
+  ]) {
+    if (!userId) continue;
+    await createNotification({
+      userId,
+      type: "schedule_cancelled",
+      title: "Schedule cancelled",
+      message: `Trip #${trip_number} on ${formatDate(departure_time)} at ${formatTime(departure_time)} was cancelled.`,
+      link,
+    });
+  }
+
   return res.status(204).send();
 };
 

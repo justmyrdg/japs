@@ -66,7 +66,7 @@ export class Schedules implements OnInit {
   buses = signal<ScheduleBus[]>([]);
   routes = signal<ScheduleRoute[]>([]);
 
-  startDate = signal<string>(this.today());
+  startDate = signal<string>(this.firstOfMonth());
   endDate = signal<string>(this.today());
 
   filterBus = signal('');
@@ -79,13 +79,15 @@ export class Schedules implements OnInit {
     const driver = this.filterDriver();
     const conductor = this.filterConductor();
     const route = this.filterRoute();
-    return this.allTrips().filter((t) => {
-      if (bus && t.bus_id !== Number(bus)) return false;
-      if (driver && t.driver_id !== Number(driver)) return false;
-      if (conductor && t.conductor_id !== Number(conductor)) return false;
-      if (route && t.route_id !== Number(route)) return false;
-      return true;
-    });
+    return this.allTrips()
+      .filter((t) => {
+        if (bus && t.bus_id !== Number(bus)) return false;
+        if (driver && t.driver_id !== Number(driver)) return false;
+        if (conductor && t.conductor_id !== Number(conductor)) return false;
+        if (route && t.route_id !== Number(route)) return false;
+        return true;
+      })
+      .sort((a, b) => b.id - a.id); // newest added first
   });
 
   tripDrivers = computed(() => {
@@ -122,6 +124,13 @@ export class Schedules implements OnInit {
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  /** First day of the current month (YYYY-MM-DD) in the browser's local time. */
+  private firstOfMonth(): string {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return `${d.getFullYear()}-${mm}-01`;
   }
 
   get dateLabel(): string {
@@ -188,7 +197,7 @@ export class Schedules implements OnInit {
   // ── Modal ──
   openAdd(): void {
     this.selectedBus.set(null);
-    this.scheduleDate.set(this.startDate());
+    this.scheduleDate.set(this.today());
     this.tripRows.set([this.newRow()]);
     this.showModal.set(true);
   }
@@ -207,18 +216,6 @@ export class Schedules implements OnInit {
         rows.map((r) => ({ ...r, route_id: r.route_id ?? bus.route_id! })),
       );
     }
-  }
-
-  onScheduleDateChange(e: Event): void {
-    const v = (e.target as HTMLInputElement).value;
-    this.scheduleDate.set(v);
-    // Update departure_time date part for all rows while keeping existing times
-    this.tripRows.update((rows) =>
-      rows.map((r) => {
-        const time = r.departure_time ? r.departure_time.split('T')[1] : '06:00';
-        return { ...r, departure_time: `${v}T${time}` };
-      }),
-    );
   }
 
   private newRow(): TripRow {
@@ -324,15 +321,5 @@ export class Schedules implements OnInit {
     if (!routeId) return '—';
     const r = this.routes().find((x) => x.id === routeId);
     return r ? `${r.origin} → ${r.destination}` : '—';
-  }
-
-  /** Minutes the trip actually left after its scheduled time, or 0 if on time. */
-  lateMinutes(trip: ScheduleTrip): number {
-    if (!trip.actual_departure_time) return 0;
-    const diff = Math.round(
-      (new Date(trip.actual_departure_time).getTime() - new Date(trip.departure_time).getTime()) /
-        60000,
-    );
-    return diff > this.LATE_THRESHOLD_MINUTES ? diff : 0;
   }
 }

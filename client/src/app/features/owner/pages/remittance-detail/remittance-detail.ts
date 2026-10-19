@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CurrencyPipe, DatePipe } from '@angular/common';
@@ -18,12 +18,14 @@ interface RemittanceDetail {
   bonus_allowance: number;
   other_deductions: number;
   cash_deposit: number;
+  cash_received: number | null;
   total_less: number;
   net_collection: number;
   driver_officer_share: number;
   conductor_officer_share: number;
   teller_remarks: string | null;
   status: 'submitted' | 'approved' | 'rejected';
+  resubmitted_at?: string | null;
   submitted_at: string;
   approved_at: string | null;
   conductor: { id: number; first_name: string; last_name: string; employee_id: string };
@@ -56,6 +58,19 @@ export class RemittanceDetailPage implements OnInit {
   remittance = signal<RemittanceDetail | null>(null);
   loading = signal(true);
 
+  /** Total Revenue = Net Collection + Cash Deposit (same as the audit teller pages). */
+  totalRevenue = computed(() => {
+    const r = this.remittance();
+    return r ? Number(r.net_collection) + Number(r.cash_deposit) : 0;
+  });
+
+  /** Cash received minus total revenue, rounded to centavos. Null if no cash was recorded. */
+  savedDifference = computed(() => {
+    const r = this.remittance();
+    if (!r || r.cash_received === null || r.cash_received === undefined) return null;
+    return Math.round((Number(r.cash_received) - this.totalRevenue()) * 100) / 100;
+  });
+
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     this.http
@@ -83,15 +98,14 @@ export class RemittanceDetailPage implements OnInit {
 
   formatExpenseType(type: string): string {
     const labels: Record<string, string> = {
-      officer: 'Officer / Police',
+      officer: 'Officer',
       toll_fees: 'Toll Fees',
       parking: 'Parking',
       ppa: 'PPA (Port Authority)',
       washing: 'Bus Washing',
-      diesel: 'Diesel / Fuel',
+      diesel: 'Diesel',
       caller_grand_terminal: 'Caller (Grand Terminal)',
       caller_calamba_terminal: 'Caller (Calamba Terminal)',
-      pwd: 'PWD / Senior Discount',
       miscellaneous: 'Miscellaneous',
     };
     return labels[type] ?? type;

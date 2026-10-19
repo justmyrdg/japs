@@ -72,6 +72,10 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
       },
+      cash_received: { 
+        type: DataTypes.DECIMAL(12, 2), 
+        allowNull: true,
+      },
       driver_officer_share: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,

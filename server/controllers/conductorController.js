@@ -21,8 +21,17 @@ const {
 } = require("../config/mailer");
 
 const { findRemittanceDetail } = require("../services/remittance/findRemittanceDetail");
+const {
+  createNotification,
+  notifyOwners,
+  notifyRoles,
+} = require("../services/notificationService");
 
-const notify = (promise) => promise.catch((err) => console.error("Email notification failed:", err));
+// Fire-and-forget wrapper: a failed email/notification must never break the real action.
+const notify = (promise) => promise.catch((err) => console.error("Notification failed:", err));
+
+const peso = (n) =>
+  `₱${Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // Emails the conductor a confirmation + summary of the remittance they just (re)submitted.
 const notifyConductorOfSubmission = (remittance, isResubmission) =>
@@ -39,6 +48,73 @@ const notifyConductorOfSubmission = (remittance, isResubmission) =>
         busLabel: bus?.bus_number ?? String(remittance.bus_id),
         remittance,
         isResubmission,
+      });
+    })(),
+  );
+
+// ── In-app notifications ────────────────────────────────────────────────────
+
+const TRIP_EVENTS = {
+  ongoing: { type: "trip_started", title: "Trip started", verb: "started" },
+  completed: { type: "trip_completed", title: "Trip completed", verb: "completed" },
+  cancelled: { type: "trip_cancelled", title: "Trip cancelled", verb: "cancelled" },
+};
+
+// Tells the owner(s) when a trip starts, completes or is cancelled.
+const notifyOwnersOfTrip = (trip, status, conductorId) =>
+  notify(
+    (async () => {
+      const event = TRIP_EVENTS[status];
+      if (!event) return;
+
+      const [full, conductor] = await Promise.all([
+        Trip.findByPk(trip.id, {
+          include: [
+            { model: BusModel, attributes: ["bus_number"] },
+            { model: Route, attributes: ["origin", "destination"] },
+          ],
+        }),
+        User.findByPk(conductorId),
+      ]);
+
+      const route = full?.Route ? `${full.Route.origin} → ${full.Route.destination}` : "";
+      const bus = full?.BusModel?.bus_number ?? trip.bus_id;
+
+      let extra = "";
+      if (status === "ongoing" && trip.actual_departure_time && trip.departure_time) {
+        const late = Math.round(
+          (new Date(trip.actual_departure_time) - new Date(trip.departure_time)) / 60000,
+        );
+        if (late >= 15) extra = ` It left ${late} min late.`;
+      }
+      if (status === "completed") extra = ` Revenue ${peso(trip.grand_total)}.`;
+
+      await notifyOwners({
+        type: event.type,
+        title: `${event.title}: Trip #${trip.trip_number}`,
+        message: `${conductor ? fullName(conductor) : "A conductor"} ${event.verb} trip #${trip.trip_number}${route ? ` (${route})` : ""} on Bus ${bus}.${extra}`,
+        link: "/owner/schedules",
+      });
+    })(),
+  );
+
+// Tells the owner(s) and audit teller(s) that a remittance needs review.
+const notifyReviewersOfSubmission = (remittance, isResubmission) =>
+  notify(
+    (async () => {
+      const [bus, conductor] = await Promise.all([
+        BusModel.findByPk(remittance.bus_id),
+        User.findByPk(remittance.conductor_id),
+      ]);
+      const payload = {
+        type: isResubmission ? "remittance_resubmitted" : "remittance_submitted",
+        title: isResubmission ? "Remittance resubmitted" : "Remittance submitted",
+        message: `${conductor ? fullName(conductor) : "A conductor"} ${isResubmission ? "resubmitted" : "submitted"} the remittance for Bus ${bus?.bus_number ?? remittance.bus_id} (${remittance.date}). Net collection ${peso(remittance.net_collection)}.`,
+      };
+      await notifyOwners({ ...payload, link: `/owner/remittances/${remittance.id}` });
+      await notifyRoles(["audit_teller"], {
+        ...payload,
+        link: `/audit-teller/remittances/${remittance.id}`,
       });
     })(),
   );
@@ -204,6 +280,7 @@ const updateTripStatus = async (req, res) => {
     }
 
     await trip.update(updateData);
+    notifyOwnersOfTrip(trip, status, conductorId);
     return res.json(trip);
   } catch (error) {
     console.error("Error updating trip status:", error);
@@ -771,6 +848,24 @@ const submitRemittance = async (req, res) => {
         .json({ message: "Missing required remittance fields." });
     }
 
+    const isValidAmount = (n) => Number.isFinite(n) && n >= 0;
+    const amountsOk = [
+      driver_commission,
+      conductor_commission,
+      bonus_allowance,
+      other_deductions,
+      cash_deposit,
+      driver_officer_share,
+      conductor_officer_share,
+    ].every((v) => isValidAmount(Number(v ?? 0)));
+    const expensesOk = expenses.every(
+      (e) => EXPENSE_TYPES.includes(e?.expense_type) && isValidAmount(Number(e.amount)),
+    );
+    if (!amountsOk || !expensesOk) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Enter valid amounts (0 or more)." });
+    }
+
     // 1. Fetch completed trips to calculate actual gross income
     const trips = await Trip.findAll({
       where: {
@@ -891,6 +986,7 @@ const submitRemittance = async (req, res) => {
     await transaction.commit();
 
     notifyConductorOfSubmission(remittance, false);
+    notifyReviewersOfSubmission(remittance, !!priorRejected);
     notify(
       (async () => {
         const [bus, conductor, reviewers] = await Promise.all([
@@ -910,6 +1006,15 @@ const submitRemittance = async (req, res) => {
         }
       })(),
     );
+
+    // Confirmation for the conductor in their own bell.
+    await createNotification({
+      userId: remittance.conductor_id,
+      type: "remittance_submitted",
+      title: "Remittance submitted",
+      message: `Your remittance for ${remittance.date} was sent to the audit teller for review.`,
+      link: "/conductor/remittances",
+    });
 
     return res.status(201).json(remittance);
   } catch (error) {
@@ -1010,6 +1115,7 @@ const resubmitRemittance = async (req, res) => {
     await transaction.commit();
 
     notifyConductorOfSubmission(remittance, true);
+    notifyReviewersOfSubmission(remittance, true);
     notify(
       (async () => {
         const [bus, conductor, reviewers] = await Promise.all([
@@ -1029,6 +1135,16 @@ const resubmitRemittance = async (req, res) => {
         }
       })(),
     );
+
+    // Confirmation for the conductor in their own bell (after the commit, so a rollback
+    // can't leave a notification behind).
+    await createNotification({
+      userId: remittance.conductor_id,
+      type: "remittance_resubmitted",
+      title: "Remittance resubmitted",
+      message: `Your updated remittance for ${remittance.date} was sent back for review.`,
+      link: "/conductor/remittances",
+    });
 
     return res.json(remittance);
   } catch (error) {

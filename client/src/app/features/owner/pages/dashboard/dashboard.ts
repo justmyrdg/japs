@@ -25,7 +25,7 @@ interface DashboardData {
   range: { from: string; to: string };
   kpi: {
     net_gross_in_range: number;
-    net_collection_in_range: number;
+    total_revenue_in_range: number;
     driver_commission_in_range: number;
     conductor_commission_in_range: number;
     passenger_count_in_range: number;
@@ -37,6 +37,8 @@ interface DashboardData {
     remittance_total: number;
     remittance_pending: number;
     remittance_rejected: number;
+    remittance_revenue_in_range: number;
+    remittance_cash_variance_in_range: number;
   };
   daily_passengers: { date: string; total: string }[];
   route_profit: {
@@ -48,7 +50,14 @@ interface DashboardData {
   }[];
   peak_hours: { hour: number; ticket_count: string }[];
   weekday_weekend: { month: number; dow: number; total: string }[];
-  remittance_trend: { year: number; month: number; net_collection: string; gross_income: string }[];
+  remittance_daily: { date: string; total_revenue: string }[];
+  remittance_trend: {
+    year: number;
+    month: number;
+    net_collection: string;
+    total_revenue: string;
+    gross_income: string;
+  }[];
 }
 
 interface ForecastData {
@@ -61,6 +70,7 @@ interface ForecastData {
   };
   demand_series: { date: string; value: number; type: 'actual' | 'forecast' }[];
   revenue_forecast_7d: { date: string; predicted: number }[];
+  revenue_series?: { date: string; value: number; type: 'actual' | 'forecast' }[];
   peak_hours_forecast: { hour: number; avg_tickets: string }[];
   seasonal_factors: { dow: string; factor: number }[];
 }
@@ -207,7 +217,7 @@ export class Dashboard implements OnInit {
     const a = this.remittanceApprovedPct();
     const b = a + this.remittanceRejectedPct();
     return `conic-gradient(#22c55e 0% ${a}%, #ef4444 ${a}% ${b}%, #f59e0b ${b}% 100%)`;
-  });
+  }); 
 
   dailyPassengerBars = computed(() => {
     const d = this.dash();
@@ -252,110 +262,175 @@ export class Dashboard implements OnInit {
   // Evenly spaced along the chart's 6 AM – 9 PM axis.
   peakHourLabels = [6, 9, 12, 15, 18, 21];
 
-  remittanceTrendValues = computed(() =>
-    (this.dash()?.remittance_trend ?? []).map((r) => Number(r.net_collection)),
-  );
-  remittanceTrendLabels = computed(() => {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return (this.dash()?.remittance_trend ?? []).map((r) => months[Number(r.month) - 1]);
-  });
-
-  weekdayWeekendBars = computed(() => {
+  /** Daily total revenue of approved remittances across the selected range (weekend flagged). */
+  remittanceDailyBars = computed(() => {
     const d = this.dash();
     if (!d) return [];
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    const map = new Map<number, { weekday: number; weekend: number }>();
-    for (const r of d.weekday_weekend) {
-      const m = Number(r.month),
-        dow = Number(r.dow);
-      const cur = map.get(m) ?? { weekday: 0, weekend: 0 };
-      if (dow === 0 || dow === 6) cur.weekend += Number(r.total);
-      else cur.weekday += Number(r.total);
-      map.set(m, cur);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const keyOf = (dt: Date) =>
+      `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+    const totals = new Map<string, number>(
+      (d.remittance_daily ?? []).map((r) => [String(r.date).slice(0, 10), Number(r.total_revenue)]),
+    );
+    const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const bars: {
+      key: string;
+      dow: string;
+      label: string;
+      day: number;
+      value: number;
+      weekend: boolean;
+      title: string;
+    }[] = [];
+    const to = new Date(`${d.range.to}T00:00:00`);
+    for (let dt = new Date(`${d.range.from}T00:00:00`); dt <= to; dt.setDate(dt.getDate() + 1)) {
+      const key = keyOf(dt);
+      const dow = dt.getDay();
+      const value = totals.get(key) ?? 0;
+      bars.push({
+        key,
+        dow: names[dow],
+        label: `${names[dow]} ${dt.getMonth() + 1}/${dt.getDate()}`,
+        day: dt.getDate(),
+        value,
+        weekend: dow === 0 || dow === 6,
+        title: `${names[dow]} ${dt.getMonth() + 1}/${dt.getDate()} · ₱${value.toLocaleString('en-PH', { maximumFractionDigits: 0 })}`,
+      });
     }
-    return Array.from(map.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([month, v]) => ({ label: months[month - 1], ...v }));
+    return bars;
+  });
+  /** Bar under the cursor in the remittance trend chart. */
+  trendHoverIndex = signal<number | null>(null);
+  trendHovered = computed(() => {
+    const i = this.trendHoverIndex();
+    const bars = this.remittanceDailyBars();
+    if (i === null || !bars[i]) return null;
+    return { ...bars[i], xPct: ((i + 0.5) / bars.length) * 100 };
+  });
+  maxRemittanceDaily = computed(() => Math.max(...this.remittanceDailyBars().map((b) => b.value), 1));
+
+  /** Passengers per day of the week (Mon–Sun, last 12 weeks), tagged with the seasonal demand factor. */
+  dayOfWeekBars = computed(() => {
+    const d = this.dash();
+    if (!d) return [];
+    const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const totals = Array(7).fill(0);
+    for (const r of d.weekday_weekend) totals[Number(r.dow)] += Number(r.total);
+    const factors = new Map<string, number>(
+      (this.fore()?.seasonal_factors ?? []).map((s) => [s.dow, s.factor] as [string, number]),
+    );
+    return [1, 2, 3, 4, 5, 6, 0].map((i) => ({
+      label: names[i],
+      value: totals[i],
+      factor: factors.get(names[i]) ?? null,
+    }));
   });
 
-  maxWeekdayWeekend = computed(() =>
-    Math.max(...this.weekdayWeekendBars().flatMap((b) => [b.weekday, b.weekend]), 1),
-  );
+  maxDayOfWeek = computed(() => Math.max(...this.dayOfWeekBars().map((b) => b.value), 1));
 
-  // ── Forecast computed ─────────────────────────────────────────────────────
+  /** High demand = green, low = red, otherwise grey (same thresholds as before). */
+  dayBarClass(factor: number | null): string {
+    if (factor === null) return 'bg-[#1E5AAA]';
+    if (factor > 1.05) return 'bg-green-400';
+    if (factor < 0.95) return 'bg-red-300';
+    return 'bg-gray-300';
+  }
+  dayTextClass(factor: number): string {
+    if (factor > 1.05) return 'text-green-600 font-semibold';
+    if (factor < 0.95) return 'text-red-400 font-semibold';
+    return 'text-gray-500';
+  }
+
+  // ── Passenger demand + revenue chart ──────────────────────────────────────
+  private readonly CHART_W = 500;
+  private readonly CHART_H = 120;
+
+  /** Index of the day under the cursor (null when not hovering). */
+  hoverIndex = signal<number | null>(null);
+
   splitIndex = computed(
     () => (this.fore()?.demand_series ?? []).filter((p) => p.type === 'actual').length,
   );
 
+  allDemandValues = computed(() => (this.fore()?.demand_series ?? []).map((p) => p.value));
+
   demandLabels = computed(() =>
     (this.fore()?.demand_series ?? []).map((p) => {
-      const d = new Date(p.date);
+      const d = new Date(`${p.date}T00:00:00`);
       return `${d.getMonth() + 1}/${d.getDate()}`;
     }),
   );
 
-  allDemandValues = computed(() => (this.fore()?.demand_series ?? []).map((p) => p.value));
-
-  actualPolyline = computed(() => {
-    const all = this.fore()?.demand_series ?? [];
-    const max = Math.max(...all.map((p) => p.value), 1);
-    const step = 500 / Math.max(all.length - 1, 1);
-    return all
-      .filter((p) => p.type === 'actual')
-      .map((p, i) => `${i * step},${120 - (p.value / max) * 120}`)
-      .join(' ');
-  });
-
-  forecastPolyline = computed(() => {
-    const all = this.fore()?.demand_series ?? [];
-    if (!all.length) return '';
-    const max = Math.max(...all.map((p) => p.value), 1);
-    const step = 500 / Math.max(all.length - 1, 1);
-    const si = this.splitIndex();
-    return all
-      .slice(si - 1)
-      .map((p, i) => `${(si - 1 + i) * step},${120 - (p.value / max) * 120}`)
-      .join(' ');
-  });
-
-  maxRevenueForecast = computed(() =>
-    Math.max(...(this.fore()?.revenue_forecast_7d ?? []).map((r) => r.predicted), 1),
+  maxPassengers = computed(() => Math.max(...this.allDemandValues(), 1));
+  maxRevenue = computed(() =>
+    Math.max(...(this.fore()?.revenue_series ?? []).map((p) => p.value), 1),
   );
 
-  revenueForecastLabels = computed(() => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    return (this.fore()?.revenue_forecast_7d ?? []).map((r) => days[new Date(r.date).getDay()]);
+  /** One entry per day: passengers + revenue, with SVG coordinates and % positions for hover markers. */
+  demandPoints = computed(() => {
+    const f = this.fore();
+    const series = f?.demand_series ?? [];
+    const rev = f?.revenue_series ?? [];
+    const n = series.length;
+    const maxP = this.maxPassengers();
+    const maxR = this.maxRevenue();
+    const yOf = (v: number, max: number) => 116 - (v / max) * 108;
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return series.map((p, i) => {
+      const r = rev[i];
+      const x = ((i + 0.5) / n) * this.CHART_W;
+      const yP = yOf(p.value, maxP);
+      const yR = r ? yOf(r.value, maxR) : null;
+      const d = new Date(`${p.date}T00:00:00`);
+      return {
+        date: p.date,
+        label: `${dayNames[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`,
+        type: p.type,
+        passengers: p.value,
+        revenue: r ? r.value : null,
+        x,
+        yP,
+        yR,
+        xPct: (x / this.CHART_W) * 100,
+        yPPct: (yP / this.CHART_H) * 100,
+        yRPct: yR === null ? null : (yR / this.CHART_H) * 100,
+      };
+    });
   });
 
-  maxSeasonalFactor = computed(() =>
-    Math.max(...(this.fore()?.seasonal_factors ?? []).map((s) => s.factor), 1),
+  /** X position (viewBox units) of today's point — the last "actual" day. */
+  splitX = computed(() => {
+    const n = this.demandPoints().length;
+    return n ? ((this.splitIndex() - 0.5) / n) * this.CHART_W : 0;
+  });
+
+  private linePoints(key: 'yP' | 'yR', from: number, to: number): string {
+    return this.demandPoints()
+      .slice(from, to)
+      .filter((p) => p[key] !== null)
+      .map((p) => `${p.x},${p[key]}`)
+      .join(' ');
+  }
+
+  // Forecast lines start at the last actual point so the two segments join up.
+  actualPolyline = computed(() => this.linePoints('yP', 0, this.splitIndex()));
+  forecastPolyline = computed(() =>
+    this.linePoints('yP', Math.max(this.splitIndex() - 1, 0), this.demandPoints().length),
   );
+  revenueActualPolyline = computed(() => this.linePoints('yR', 0, this.splitIndex()));
+  revenueForecastPolyline = computed(() =>
+    this.linePoints('yR', Math.max(this.splitIndex() - 1, 0), this.demandPoints().length),
+  );
+
+  hovered = computed(() => {
+    const i = this.hoverIndex();
+    return i === null ? null : (this.demandPoints()[i] ?? null);
+  });
+
+  /** Keeps the tooltip inside the chart near the left/right edges. */
+  tooltipLeft(xPct: number): number {
+    return Math.min(Math.max(xPct, 14), 86);
+  }
 
   peakLabel(hour: number): string {
     const h = Number(hour);

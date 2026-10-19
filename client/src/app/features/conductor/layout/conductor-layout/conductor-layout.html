@@ -67,11 +67,11 @@
   <div class="flex-1 flex flex-col overflow-hidden min-w-0">
     <!-- Top bar -->
     <header
-      class="bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-4 flex items-center justify-between shrink-0"
+      class="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center justify-between shrink-0"
     >
       <h1 class="text-base font-semibold text-gray-800">Conductor Portal</h1>
 
-      <div class="flex items-center gap-2 md:gap-3">
+      <div class="flex items-center gap-2 md:gap-4">
         <!-- Printer / Bluetooth connection -->
         <div class="relative">
           <button
@@ -133,10 +133,27 @@
           }
         </div>
 
-        <!-- Desktop: name -->
-        <div class="hidden md:flex items-center gap-2 text-sm text-gray-500">
-          <i class="pi pi-user text-[#1E5AAA]"></i>
-          <span>{{ user?.first_name }} {{ user?.last_name }}</span>
+        <!-- Notifications -->
+        <app-notification-bell />
+
+        <!-- Desktop: divider + user -->
+        <div class="hidden md:flex items-center gap-4">
+          <div class="h-8 w-px bg-gray-200"></div>
+          <div class="flex items-center gap-3">
+            <div
+              class="w-9 h-9 rounded-full bg-[#1E5AAA]/10 text-[#1E5AAA] flex items-center justify-center text-sm font-semibold shrink-0"
+            >
+              {{ initials() }}
+            </div>
+            <div class="leading-tight">
+              <p class="text-sm font-medium text-gray-800">
+                {{ user?.first_name }} {{ user?.last_name }}
+              </p>
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-[#1E5AAA]">
+                Conductor
+              </p>
+            </div>
+          </div>
         </div>
 
         <!-- Mobile: avatar dropdown -->
@@ -149,7 +166,7 @@
             <div
               class="w-8 h-8 rounded-full bg-[#1E5AAA] text-white flex items-center justify-center text-sm font-bold shrink-0"
             >
-              {{ (user?.first_name?.[0] ?? '') + (user?.last_name?.[0] ?? '') }}
+              {{ initials() }}
             </div>
             <i
               class="pi text-xs text-gray-400"

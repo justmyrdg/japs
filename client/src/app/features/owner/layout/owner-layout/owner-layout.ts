@@ -1,8 +1,8 @@
 import { Component, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../../../../core/services/auth.service';
-import { AlertService } from '../../../../core/services/alert.service';
 import { ConfirmModal } from '../../../../shared/components/confirm-modal/confirm-modal';
+import { NotificationBell } from '../../../../shared/components/notification-bell/notification-bell';
 
 interface NavItem {
   label: string;
@@ -12,16 +12,17 @@ interface NavItem {
 
 @Component({
   selector: 'app-owner-layout',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ConfirmModal],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, ConfirmModal, NotificationBell],
   templateUrl: './owner-layout.html',
 })
 export class OwnerLayout {
   private auth = inject(AuthService);
   private router = inject(Router);
-  private alertService = inject(AlertService);
 
   user = this.auth.getUser();
   sidebarOpen = signal(true);
+  mobileMenuOpen = signal(false);
+  userMenuOpen = signal(false);
   showLogoutConfirm = signal(false);
 
   navItems: NavItem[] = [
@@ -38,6 +39,22 @@ export class OwnerLayout {
     this.sidebarOpen.update((v) => !v);
   }
 
+  openMobileMenu(): void {
+    this.mobileMenuOpen.set(true);
+  }
+
+  closeMobileMenu(): void {
+    this.mobileMenuOpen.set(false);
+  }
+
+  toggleUserMenu(): void {
+    this.userMenuOpen.update((v) => !v);
+  }
+
+  closeUserMenu(): void {
+    this.userMenuOpen.set(false);
+  }
+
   roleLabel(): string {
     if (this.user?.role === 'secretary') return 'Secretary';
     if (this.user?.role === 'admin_staff') return 'Admin Staff';
@@ -49,6 +66,7 @@ export class OwnerLayout {
   }
 
   confirmLogout(): void {
+    this.userMenuOpen.set(false);
     this.showLogoutConfirm.set(true);
   }
 

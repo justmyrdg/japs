@@ -10,5 +10,5 @@
 }
 
 .active-tab i {
-  /* no glow */
+  text-shadow: none;/* no glow */
 }

@@ -4,6 +4,7 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { AlertService } from '../../../../core/services/alert.service';
 import { PrinterSetupService } from '../../../../core/services/printer-setup.service';
 import { ConfirmModal } from '../../../../shared/components/confirm-modal/confirm-modal';
+import { NotificationBell } from '../../../../shared/components/notification-bell/notification-bell';
 
 interface NavItem {
   label: string;
@@ -14,7 +15,7 @@ interface NavItem {
 
 @Component({
   selector: 'app-conductor-layout',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ConfirmModal],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, ConfirmModal, NotificationBell],
   templateUrl: './conductor-layout.html',
   styleUrl: './conductor-layout.css',
 })
@@ -35,12 +36,18 @@ export class ConductorLayout {
     { label: 'My Trips', shortLabel: 'Trips', icon: 'pi-list', route: 'trips' },
     { label: 'Ticketing Terminal', shortLabel: 'Ticketing', icon: 'pi-ticket', route: 'ticketing' },
     { label: 'All Tickets', shortLabel: 'Tickets', icon: 'pi-receipt', route: 'tickets' },
-    { label: 'Expenses', icon: 'pi-wallet', route: 'expenses' },
     { label: 'Remittances', shortLabel: 'Remit', icon: 'pi-file-check', route: 'remittances' },
   ];
 
   toggleSidebar(): void {
     this.sidebarOpen.update((v) => !v);
+  }
+
+  /** First letters of the first and last name, for the header avatar. */
+  initials(): string {
+    const first = this.user?.first_name?.[0] ?? '';
+    const last = this.user?.last_name?.[0] ?? '';
+    return (first + last).toUpperCase();
   }
 
   toggleUserMenu(): void {

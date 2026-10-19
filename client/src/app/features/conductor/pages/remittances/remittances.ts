@@ -89,7 +89,7 @@ interface LoggedExpense {
   amount: string | number;
 }
 
-const MANUAL_CATEGORIES = ['regular', 'student', 'senior_citizen', 'pwd', 'discounted'];
+const MANUAL_CATEGORIES = ['regular', 'student', 'senior_citizen'];
 
 // Remittance form control for each expense type.
 const EXPENSE_CONTROLS: Record<string, string> = {
@@ -101,7 +101,6 @@ const EXPENSE_CONTROLS: Record<string, string> = {
   diesel: 'exp_diesel',
   caller_grand_terminal: 'exp_caller_grand_terminal',
   caller_calamba_terminal: 'exp_caller_calamba_terminal',
-  pwd: 'exp_pwd',
   miscellaneous: 'exp_miscellaneous',
 };
 
@@ -115,7 +114,6 @@ const EXPENSE_FIELDS = [
   { ctrl: 'exp_diesel', label: 'Diesel / Fuel' },
   { ctrl: 'exp_caller_grand_terminal', label: 'Caller (Grand Terminal)' },
   { ctrl: 'exp_caller_calamba_terminal', label: 'Caller (Calamba Terminal)' },
-  { ctrl: 'exp_pwd', label: 'PWD / Senior Discount' },
   { ctrl: 'exp_miscellaneous', label: 'Miscellaneous' },
 ];
 
@@ -136,7 +134,7 @@ const toDateTimeLocal = (d: string | Date): string => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
-type SortField = 'date' | 'submitted_at' | 'net_collection' | 'status';
+type SortField = 'date' | 'submitted_at' | 'net_collection' | 'total_revenue' | 'status';
 type Tab = 'list' | 'submit';
 
 @Component({
@@ -206,6 +204,7 @@ export class ConductorRemittancesPage implements OnInit {
   );
   editTotalLess = computed(() => sumLessFields(this.editValues()));
   editNetCollection = computed(() => this.editNetGross() - this.editTotalLess());
+  editTotalRevenue = computed(() => this.editNetCollection() + Number(this.editValues()?.cash_deposit || 0));
 
   constructor() {
     this.remittanceForm = this.createRemittanceForm();
@@ -222,7 +221,6 @@ export class ConductorRemittancesPage implements OnInit {
       exp_diesel: [0, [Validators.min(0)]],
       exp_caller_grand_terminal: [0, [Validators.min(0)]],
       exp_caller_calamba_terminal: [0, [Validators.min(0)]],
-      exp_pwd: [0, [Validators.min(0)]],
       exp_miscellaneous: [0, [Validators.min(0)]],
       driver_commission: [0, [Validators.required, Validators.min(0)]],
       conductor_commission: [0, [Validators.required, Validators.min(0)]],
@@ -235,12 +233,15 @@ export class ConductorRemittancesPage implements OnInit {
   }
 
   ngOnInit(): void {
-    this.loadRemittances();
-    this.loadBuses();
-    this.remittanceForm.valueChanges.subscribe((v) => this.formValues.set(v));
-    this.formValues.set(this.remittanceForm.value);
-    this.editForm.valueChanges.subscribe((v) => this.editValues.set(v));
-  }
+  this.loadRemittances();
+  this.loadBuses();
+  this.remittanceForm.valueChanges.subscribe((v) => {
+    this.formValues.set(v);
+    this.autoCalculateCommissions();
+  });
+  this.formValues.set(this.remittanceForm.value);
+  this.editForm.valueChanges.subscribe((v) => this.editValues.set(v));
+}
 
   setTab(tab: Tab): void {
     this.activeTab.set(tab);
@@ -282,8 +283,8 @@ export class ConductorRemittancesPage implements OnInit {
     const field = this.sortField();
     const dir = this.sortDir();
     return [...this.filtered()].sort((a, b) => {
-      let av: any = a[field];
-      let bv: any = b[field];
+      let av: any = field === 'total_revenue' ? this.rowRevenue(a) : a[field];
+      let bv: any = field === 'total_revenue' ? this.rowRevenue(b) : b[field];
       if (field === 'net_collection') {
         av = Number(av);
         bv = Number(bv);
@@ -373,6 +374,10 @@ export class ConductorRemittancesPage implements OnInit {
     if (r.status !== 'submitted') return r.status;
     return r.resubmitted_at ? 'Updated' : 'Pending';
   }
+  /** Total Revenue for a list row: Net Collection + Cash Deposit. */
+  rowRevenue(r: Remittance): number {
+    return Number(r.net_collection) + Number(r.cash_deposit);
+  }
 
   /** Opens the details panel, then loads the tickets issued on each of its trips. */
   openDetails(r: Remittance): void {
@@ -390,6 +395,10 @@ export class ConductorRemittancesPage implements OnInit {
   closeDetails(): void {
     this.editing.set(false);
     this.selected.set(null);
+  }
+  selectedTotalRevenue(): number {
+    const r = this.selected();
+    return r ? Number(r.net_collection) + Number(r.cash_deposit) : 0;
   }
 
   // ── Edit & resubmit a rejected remittance ──
@@ -584,13 +593,26 @@ export class ConductorRemittancesPage implements OnInit {
     this.manualEntries.set(entries);
   }
 
+  /** Strips everything but digits (and one decimal point when decimals are allowed), caps the
+   *  digit counts, and writes the cleaned text back into the field as the user types. */
+  private cleanNumberInput(e: Event, maxIntDigits: number, maxDecimals = 0): string {
+    const input = e.target as HTMLInputElement;
+    const [intPart = '', ...rest] = input.value.replace(/[^\d.]/g, '').split('.');
+    let text = intPart.slice(0, maxIntDigits);
+    if (maxDecimals > 0 && rest.length) text += '.' + rest.join('').slice(0, maxDecimals);
+    if (input.value !== text) input.value = text;
+    return text;
+  }
+
+  /** Passengers per category: whole numbers, 2 digits at most (0–99). */
   updateManualCount(tripId: number, category: string, e: Event): void {
-    const value = Math.max(0, Math.floor(Number((e.target as HTMLInputElement).value) || 0));
+    const value = Number(this.cleanNumberInput(e, 2)) || 0;
     this.patchManual(tripId, (m) => ({ ...m, counts: { ...m.counts, [category]: value } }));
   }
 
+  /** Cash collected: 6 digits at most before the decimal point (up to ₱999,999.99). */
   updateManualCollection(tripId: number, e: Event): void {
-    const value = Math.max(0, Number((e.target as HTMLInputElement).value) || 0);
+    const value = Number(this.cleanNumberInput(e, 6, 2)) || 0;
     this.patchManual(tripId, (m) => ({ ...m, collection: value }));
     this.autoCalculateCommissions();
   }
@@ -647,12 +669,21 @@ export class ConductorRemittancesPage implements OnInit {
 
   selectedTrips = computed(() => this.allTrips().filter((t) => this.selectedTripIds().has(t.id)));
 
+  /** Commissions are a share of Net Gross (gross income minus expenses), rounded to whole pesos.
+ *  A field the conductor has typed into by hand is left alone. */
   autoCalculateCommissions(): void {
-    const gross = this.grossIncome();
-    this.remittanceForm.patchValue({
-      driver_commission: parseFloat((gross * 0.1).toFixed(2)),
-      conductor_commission: parseFloat((gross * 0.08).toFixed(2)),
-    });
+    const net = Math.max(0, this.netGross());
+    const driver = Math.round(net * 0.12);
+    const conductor = Math.round(net * 0.1);
+    const form = this.remittanceForm;
+    const patch: Record<string, number> = {};
+    if (!form.get('driver_commission')!.dirty && form.value.driver_commission !== driver) {
+      patch['driver_commission'] = driver;
+    }
+    if (!form.get('conductor_commission')!.dirty && form.value.conductor_commission !== conductor) {
+      patch['conductor_commission'] = conductor;
+    }
+    if (Object.keys(patch).length) form.patchValue(patch);
   }
 
   grossIncome = computed(() => this.selectedTrips().reduce((sum, t) => sum + this.tripAmount(t), 0));
@@ -668,7 +699,6 @@ export class ConductorRemittancesPage implements OnInit {
       f.exp_diesel,
       f.exp_caller_grand_terminal,
       f.exp_caller_calamba_terminal,
-      f.exp_pwd,
       f.exp_miscellaneous,
     ].reduce((sum, v) => sum + Number(v || 0), 0);
   });
@@ -687,6 +717,7 @@ export class ConductorRemittancesPage implements OnInit {
   });
 
   netCollection = computed(() => this.netGross() - this.totalLess());
+  totalRevenue = computed(() => this.netCollection() + Number(this.formValues().cash_deposit || 0));
 
   private buildExpensesPayload(f: any = this.remittanceForm.value) {
     const map: Record<string, number> = {
@@ -698,7 +729,6 @@ export class ConductorRemittancesPage implements OnInit {
       diesel: f.exp_diesel,
       caller_grand_terminal: f.exp_caller_grand_terminal,
       caller_calamba_terminal: f.exp_caller_calamba_terminal,
-      pwd: f.exp_pwd,
       miscellaneous: f.exp_miscellaneous,
     };
     return Object.entries(map)
@@ -743,7 +773,6 @@ export class ConductorRemittancesPage implements OnInit {
       exp_diesel,
       exp_caller_grand_terminal,
       exp_caller_calamba_terminal,
-      exp_pwd,
       exp_miscellaneous,
       ...rest
     } = this.remittanceForm.value;
@@ -777,7 +806,6 @@ export class ConductorRemittancesPage implements OnInit {
             exp_diesel: 0,
             exp_caller_grand_terminal: 0,
             exp_caller_calamba_terminal: 0,
-            exp_pwd: 0,
             exp_miscellaneous: 0,
             driver_commission: 0,
             conductor_commission: 0,

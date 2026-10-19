@@ -46,7 +46,7 @@ interface Remittance {
   }[];
 }
 
-type SortField = 'date' | 'submitted_at' | 'net_collection' | 'status';
+type SortField = 'date' | 'submitted_at' | 'total_revenue' | 'status';
 
 // Read-only disclosure of the driver's own remittances — drivers cannot submit, edit,
 // approve, or reject; this mirrors the conductor list view minus every write action.
@@ -89,6 +89,11 @@ export class DriverRemittancesPage implements OnInit {
     });
   }
 
+  /** Total Revenue = Net Collection + Cash Deposit */
+  revenue(r: Remittance): number {
+    return Number(r.net_collection) + Number(r.cash_deposit);
+  }
+
   filtered = computed(() => {
     const q = this.search().toLowerCase().trim();
     const status = this.statusFilter();
@@ -113,12 +118,8 @@ export class DriverRemittancesPage implements OnInit {
     const field = this.sortField();
     const dir = this.sortDir();
     return [...this.filtered()].sort((a, b) => {
-      let av: any = a[field];
-      let bv: any = b[field];
-      if (field === 'net_collection') {
-        av = Number(av);
-        bv = Number(bv);
-      }
+      let av: any = field === 'total_revenue' ? this.revenue(a) : a[field];
+      let bv: any = field === 'total_revenue' ? this.revenue(b) : b[field];
       if (typeof av === 'string') av = av.toLowerCase();
       if (typeof bv === 'string') bv = bv.toLowerCase();
       if (av < bv) return dir === 'asc' ? -1 : 1;
@@ -214,15 +215,14 @@ export class DriverRemittancesPage implements OnInit {
 
   formatExpenseType(type: string): string {
     const labels: Record<string, string> = {
-      officer: 'Officer / Police',
+      officer: 'Officer',
       toll_fees: 'Toll Fees',
       parking: 'Parking',
       ppa: 'PPA (Port Authority)',
       washing: 'Bus Washing',
-      diesel: 'Diesel / Fuel',
+      diesel: 'Diesel',
       caller_grand_terminal: 'Caller (Grand Terminal)',
       caller_calamba_terminal: 'Caller (Calamba Terminal)',
-      pwd: 'PWD / Senior Discount',
       miscellaneous: 'Miscellaneous',
     };
     return labels[type] ?? type;

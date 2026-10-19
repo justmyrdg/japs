@@ -8,8 +8,54 @@ const {
   Ticket,
 } = require("../models");
 const { fullName, sendRemittanceStatusEmail } = require("../config/mailer");
+const { createNotification, notifyOwners } = require("../services/notificationService");
 
-const notify = (promise) => promise.catch((err) => console.error("Email notification failed:", err));
+// Fire-and-forget wrapper: a failed email/notification must never break the real action.
+const notify = (promise) => promise.catch((err) => console.error("Notification failed:", err));
+
+const peso = (n) =>
+  `₱${Number(n).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Converts the teller's "cash received" input to a number, or null when empty.
+// Returns undefined when the value is invalid (not a number, or negative).
+const parseCashReceived = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.round(n * 100) / 100; // 2 decimal places
+};
+
+// Tells the owner(s) how a remittance was reviewed, and flags a cash shortage/overage.
+// (The conductor is notified separately in approve/reject.)
+const notifyOwnersOfReview = (remittance, status, tellerId, cashReceived) =>
+  notify(
+    (async () => {
+      const teller = await User.findByPk(tellerId);
+      const who = teller ? fullName(teller) : "The audit teller";
+      const bus = remittance.BusModel?.bus_number ?? remittance.bus_id;
+      const approved = status === "approved";
+
+      await notifyOwners({
+        type: `remittance_${status}`,
+        title: approved ? "Remittance approved" : "Remittance rejected",
+        message: `${who} ${approved ? "approved" : "rejected"} the remittance for Bus ${bus} (${remittance.date}).`,
+        link: `/owner/remittances/${remittance.id}`,
+      });
+
+      if (cashReceived !== null) {
+        const expected = Number(remittance.net_collection) + Number(remittance.cash_deposit);
+        const diff = Math.round((cashReceived - expected) * 100) / 100;
+        if (diff !== 0) {
+          await notifyOwners({
+            type: "cash_discrepancy",
+            title: diff < 0 ? "Cash short" : "Cash over",
+            message: `Bus ${bus} (${remittance.date}): received ${peso(cashReceived)} against ${peso(expected)} total revenue, ${diff < 0 ? "short" : "over"} by ${peso(Math.abs(diff))}.`,
+            link: `/owner/remittances/${remittance.id}`,
+          });
+        }
+      }
+    })(),
+  );
 
 // GET /api/audit-teller/stats
 // Get dashboard statistics
@@ -202,11 +248,16 @@ const updateRemittance = async (req, res) => {
 };
 
 // PUT /api/audit-teller/remittances/:id/approve
-// Approve a remittance
+// Approve a remittance. Body: { cash_received }
 const approveRemittance = async (req, res) => {
   try {
     const { id } = req.params;
     const auditTellerId = req.user.id;
+
+    const cashReceived = parseCashReceived(req.body.cash_received);
+    if (cashReceived === undefined) {
+      return res.status(400).json({ message: "Invalid cash received amount." });
+    }
 
     const remittance = await Remittance.findByPk(id, {
       include: [
@@ -223,7 +274,27 @@ const approveRemittance = async (req, res) => {
       status: "approved",
       approved_by: auditTellerId,
       approved_at: new Date(),
+      cash_received: cashReceived,
     });
+
+    // In-app notifications: the conductor's and driver's bells, then the owner(s).
+    await createNotification({
+      userId: remittance.conductor_id,
+      type: "remittance_approved",
+      title: "Remittance approved",
+      message: `Your remittance for Bus ${remittance.BusModel?.bus_number ?? ""} on ${remittance.date} was approved.`,
+      link: "/conductor/remittances",
+    });
+    if (remittance.driver_id) {
+      await createNotification({
+        userId: remittance.driver_id,
+        type: "remittance_approved",
+        title: "Remittance approved",
+        message: `The remittance for Bus ${remittance.BusModel?.bus_number ?? ""} on ${remittance.date} was approved.`,
+        link: "/driver/remittances",
+      });
+    }
+    notifyOwnersOfReview(remittance, "approved", auditTellerId, cashReceived);
 
     for (const user of [remittance.driver, remittance.conductor]) {
       if (!user) continue;
@@ -246,12 +317,17 @@ const approveRemittance = async (req, res) => {
 };
 
 // PUT /api/audit-teller/remittances/:id/reject
-// Reject a remittance
+// Reject a remittance. Body: { reason, cash_received }
 const rejectRemittance = async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
     const auditTellerId = req.user.id;
+
+    const cashReceived = parseCashReceived(req.body.cash_received);
+    if (cashReceived === undefined) {
+      return res.status(400).json({ message: "Invalid cash received amount." });
+    }
 
     const remittance = await Remittance.findByPk(id, {
       include: [
@@ -269,7 +345,27 @@ const rejectRemittance = async (req, res) => {
       approved_by: auditTellerId,
       approved_at: new Date(),
       teller_remarks: reason || null,
+      cash_received: cashReceived,
     });
+
+    // In-app notifications: the conductor's and driver's bells, then the owner(s).
+    await createNotification({
+      userId: remittance.conductor_id,
+      type: "remittance_rejected",
+      title: "Remittance rejected",
+      message: `Your remittance for Bus ${remittance.BusModel?.bus_number ?? ""} on ${remittance.date} was rejected.${reason ? " Reason: " + reason : ""}`,
+      link: "/conductor/remittances",
+    });
+    if (remittance.driver_id) {
+      await createNotification({
+        userId: remittance.driver_id,
+        type: "remittance_rejected",
+        title: "Remittance rejected",
+        message: `The remittance for Bus ${remittance.BusModel?.bus_number ?? ""} on ${remittance.date} was rejected.${reason ? " Reason: " + reason : ""}`,
+        link: "/driver/remittances",
+      });
+    }
+    notifyOwnersOfReview(remittance, "rejected", auditTellerId, cashReceived);
 
     for (const user of [remittance.driver, remittance.conductor]) {
       if (!user) continue;

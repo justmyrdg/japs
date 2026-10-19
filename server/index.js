@@ -12,6 +12,7 @@ const conductorRoutes = require("./routes/conductorRoutes");
 const driverRoutes = require("./routes/driverRoutes");
 const auditTellerRoutes = require("./routes/auditTellerRoutes");
 const ownerRoutes = require("./routes/ownerRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -34,6 +35,7 @@ app.use("/api/conductor", conductorRoutes);
 app.use("/api/driver", driverRoutes);
 app.use("/api/audit-teller", auditTellerRoutes);
 app.use("/api/owner", ownerRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // DB sync + server start
 // DB_SYNC_MODE: "alter" (default, safe — adds/adjusts columns without dropping

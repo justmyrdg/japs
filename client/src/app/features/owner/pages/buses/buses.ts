@@ -115,6 +115,28 @@ export class Buses implements OnInit {
   drivers = signal<CrewUser[]>([]);
   conductors = signal<CrewUser[]>([]);
 
+  /** Drivers not assigned to any OTHER bus (the bus being edited keeps its own driver). */
+  availableDrivers = computed(() => {
+    const current = this.assigningBus();
+    const takenByOthers = new Set(
+      this.allBuses()
+        .filter((b) => b.id !== current?.id && b.driver_id != null)
+        .map((b) => b.driver_id as number),
+    );
+    return this.drivers().filter((d) => !takenByOthers.has(d.id));
+  });
+
+  /** Conductors not assigned to any OTHER bus (the bus being edited keeps its own conductor). */
+  availableConductors = computed(() => {
+    const current = this.assigningBus();
+    const takenByOthers = new Set(
+      this.allBuses()
+        .filter((b) => b.id !== current?.id && b.conductor_id != null)
+        .map((b) => b.conductor_id as number),
+    );
+    return this.conductors().filter((c) => !takenByOthers.has(c.id));
+  });
+
   crewForm: FormGroup = this.fb.group({
     driver_id: [null],
     conductor_id: [null],
