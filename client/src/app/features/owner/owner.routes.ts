@@ -20,6 +20,11 @@ export const OWNER_ROUTES: Routes = [
         loadComponent: () => import('./pages/remittances/remittances').then((m) => m.Remittances),
       },
       {
+        path: 'reports',
+        loadComponent: () =>
+          import('./pages/reports/reports').then((m) => m.OwnerReports),
+      },
+      {
         path: 'remittances/:id',
         loadComponent: () =>
           import('./pages/remittance-detail/remittance-detail').then((m) => m.RemittanceDetailPage),

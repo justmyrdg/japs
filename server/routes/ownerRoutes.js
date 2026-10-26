@@ -582,4 +582,446 @@ router.get("/forecast", async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// REPORTS — GET /api/owner/reports/summary?from=&to=   (JSON preview)
+//           GET /api/owner/reports/remittances?from=&to= (Excel download)
+// Totals use APPROVED remittances only; the Remittances sheet lists every
+// status so the owner can also see pending / rejected ones.
+// ═══════════════════════════════════════════════════════════════════════════
+const isDay = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const num = (v) => Number(v) || 0;
+const fullName = (u) => (u ? `${u.first_name} ${u.last_name}` : "");
+
+async function loadReport(from, to) {
+  const rows = await Remittance.findAll({
+    where: { date: { [Op.between]: [from, to] } },
+    include: [
+      { model: BusModel, attributes: ["id", "bus_number", "plate_number"] },
+      { model: User, as: "driver", attributes: ["id", "first_name", "last_name"] },
+      { model: User, as: "conductor", attributes: ["id", "first_name", "last_name"] },
+      { model: User, as: "approver", attributes: ["id", "first_name", "last_name"] },
+      { model: RemittanceExpense, attributes: ["id", "expense_type", "amount"] },
+    ],
+    order: [["date", "ASC"], ["id", "ASC"]],
+  });
+
+  const approved = rows.filter((r) => r.status === "approved");
+  const sum = (list, fn) => list.reduce((s, r) => s + fn(r), 0);
+
+  const summary = {
+    from,
+    to,
+    remittances: approved.length,
+    gross_income: sum(approved, (r) => num(r.gross_income)),
+    total_expenses: sum(approved, (r) => num(r.total_expenses)),
+    net_gross: sum(approved, (r) => num(r.gross_income) - num(r.total_expenses)),
+    driver_commission: sum(approved, (r) => Math.round(num(r.driver_commission))),
+    conductor_commission: sum(approved, (r) => Math.round(num(r.conductor_commission))),
+    net_collection: sum(approved, (r) => num(r.net_collection)),
+    cash_deposit: sum(approved, (r) => num(r.cash_deposit)),
+    total_revenue: sum(approved, (r) => num(r.net_collection) + num(r.cash_deposit)),
+    cash_received: sum(approved, (r) => num(r.cash_received)),
+    pending: rows.filter((r) => r.status === "submitted").length,
+    rejected: rows.filter((r) => r.status === "rejected").length,
+  };
+  return { rows, approved, summary };
+}
+
+// Daily report laid out like the paper Teller's Report: one row per bus with
+// gross income, one column per expense type, then the totals and the review
+// status. The TOTAL row sums APPROVED remittances only (live SUMIF formulas).
+const EXPENSE_COLUMNS = [
+  ["officer", "Officer / Police"],
+  ["toll_fees", "Toll Fees"],
+  ["parking", "Parking"],
+  ["ppa", "PPA"],
+  ["washing", "Bus Washing"],
+  ["diesel", "Diesel / Fuel"],
+  ["caller_grand_terminal", "Caller (Grand Terminal)"],
+  ["caller_calamba_terminal", "Caller (Calamba Terminal)"],
+  ["pwd", "PWD / Senior Discount"],
+  ["miscellaneous", "Miscellaneous"],
+];
+
+function buildDailySheet(wb, rows, day) {
+  const PESO = '#,##0.00';
+  const ws = wb.addWorksheet("Teller's Report", {
+    views: [{ state: "frozen", xSplit: 3, ySplit: 7 }],
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  });
+
+  const heads = [
+    "Bus #", "Driver", "Conductor", "Gross Income",
+    ...EXPENSE_COLUMNS.map((c) => c[1]),
+    "Total Expenses", "Net Gross", "Driver Commission", "Conductor Commission",
+    "Net Collection", "Cash Deposit", "Total Revenue", "Cash Remitted", "Status",
+  ];
+  const lastCol = heads.length;
+  const colL = (n) => ws.getColumn(n).letter;
+  const statusCol = lastCol;
+  const FIRST_DATA = 8;
+
+  // Title block
+  const titles = [
+    ["JAPS TRANSPORT", { bold: true, size: 16 }],
+    ["Batangas/Calamba Japs Transport And General Services Inc.", { bold: true, size: 11 }],
+    ["Mapulo, Taysan, Batangas", { size: 11 }],
+    ["Teller's Report", { bold: true, size: 14 }],
+    [
+      new Date(`${day}T00:00:00`).toLocaleDateString("en-US", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric",
+      }),
+      { italic: true, size: 11 },
+    ],
+  ];
+  titles.forEach(([text, font], i) => {
+    ws.mergeCells(i + 1, 1, i + 1, 8);
+    const c = ws.getCell(i + 1, 1);
+    c.value = text;
+    c.font = font;
+    c.alignment = { horizontal: "left" };
+  });
+
+  // Header row (row 7)
+  const hr = ws.getRow(7);
+  heads.forEach((h, i) => (hr.getCell(i + 1).value = h));
+  hr.height = 42;
+  hr.eachCell((c) => {
+    c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E5AAA" } };
+    c.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    c.border = { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } };
+  });
+
+  ws.getColumn(1).width = 10;
+  ws.getColumn(2).width = 20;
+  ws.getColumn(3).width = 20;
+  for (let i = 4; i < lastCol; i++) ws.getColumn(i).width = 14;
+  ws.getColumn(statusCol).width = 12;
+
+  const statusLabel = { submitted: "Pending", approved: "Approved", rejected: "Rejected" };
+  const thin = { style: "thin", color: { argb: "FF9CA3AF" } };
+  const box = { top: thin, bottom: thin, left: thin, right: thin };
+
+  rows.forEach((r, idx) => {
+    const byType = {};
+    (r.RemittanceExpenses || []).forEach((e) => {
+      byType[e.expense_type] = (byType[e.expense_type] || 0) + num(e.amount);
+    });
+    // Any expense type not in the fixed list goes into Miscellaneous.
+    const known = new Set(EXPENSE_COLUMNS.map((c) => c[0]));
+    Object.keys(byType).forEach((k) => {
+      if (!known.has(k)) {
+        byType.miscellaneous = (byType.miscellaneous || 0) + byType[k];
+        delete byType[k];
+      }
+    });
+
+    const gross = num(r.gross_income);
+    const totalExp = num(r.total_expenses);
+    const vals = [
+      r.BusModel ? r.BusModel.bus_number : "",
+      fullName(r.driver),
+      fullName(r.conductor),
+      gross,
+      ...EXPENSE_COLUMNS.map((c) => byType[c[0]] || 0),
+      totalExp,
+      gross - totalExp,
+      Math.round(num(r.driver_commission)),
+      Math.round(num(r.conductor_commission)),
+      num(r.net_collection),
+      num(r.cash_deposit),
+      num(r.net_collection) + num(r.cash_deposit),
+      r.cash_received == null ? null : num(r.cash_received),
+      statusLabel[r.status] || r.status,
+    ];
+    const row = ws.getRow(FIRST_DATA + idx);
+    vals.forEach((v, i) => {
+      const c = row.getCell(i + 1);
+      c.value = v;
+      c.border = box;
+      if (i >= 3 && i < lastCol - 1) {
+        c.numFmt = PESO;
+        c.alignment = { horizontal: "right" };
+      }
+      if (i === lastCol - 1) c.alignment = { horizontal: "center" };
+    });
+  });
+
+  const lastData = FIRST_DATA + Math.max(rows.length, 1) - 1;
+  if (!rows.length) {
+    ws.mergeCells(FIRST_DATA, 1, FIRST_DATA, lastCol);
+    const c = ws.getCell(FIRST_DATA, 1);
+    c.value = "No remittances for this day.";
+    c.font = { italic: true, color: { argb: "FF6B7280" } };
+    c.alignment = { horizontal: "center" };
+  }
+
+  // TOTAL row (approved only)
+  const totalRowNo = lastData + 1;
+  const tr = ws.getRow(totalRowNo);
+  ws.mergeCells(totalRowNo, 1, totalRowNo, 3);
+  tr.getCell(1).value = "TOTAL (approved only)";
+  tr.getCell(1).alignment = { horizontal: "center" };
+  const approvedRows = rows.filter((r) => r.status === "approved");
+  for (let i = 4; i < lastCol; i++) {
+    const L = colL(i);
+    const c = tr.getCell(i);
+    if (rows.length) {
+      // Cache the computed value so viewers that don't recalculate still show it.
+      let result = 0;
+      approvedRows.forEach((r) => {
+        const idx = rows.indexOf(r);
+        const v = ws.getRow(FIRST_DATA + idx).getCell(i).value;
+        result += typeof v === "number" ? v : 0;
+      });
+      c.value = {
+        formula: `SUMIF($${colL(statusCol)}$${FIRST_DATA}:$${colL(statusCol)}$${lastData},"Approved",${L}${FIRST_DATA}:${L}${lastData})`,
+        result,
+      };
+    } else {
+      c.value = 0;
+    }
+    c.numFmt = PESO;
+    c.alignment = { horizontal: "right" };
+  }
+  tr.eachCell({ includeEmpty: true }, (c) => {
+    c.font = { bold: true };
+    c.border = { top: { style: "medium" }, bottom: { style: "double" }, left: thin, right: thin };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8F0FB" } };
+  });
+
+  const note = ws.getRow(totalRowNo + 2);
+  ws.mergeCells(totalRowNo + 2, 1, totalRowNo + 2, 10);
+  note.getCell(1).value =
+    "Totals count approved remittances only. Pending and rejected remittances are listed for reference.";
+  note.getCell(1).font = { italic: true, color: { argb: "FF6B7280" } };
+}
+
+function readRange(req, res) {
+  const { from, to } = req.query;
+  if (!isDay(from) || !isDay(to) || from > to) {
+    res.status(400).json({ message: "Choose a valid date range (from ≤ to)." });
+    return null;
+  }
+  return { from, to };
+}
+
+router.get("/reports/summary", async (req, res) => {
+  try {
+    const range = readRange(req, res);
+    if (!range) return;
+    const { summary } = await loadReport(range.from, range.to);
+    return res.json(summary);
+  } catch (error) {
+    console.error("Error building report summary:", error);
+    return res.status(500).json({ message: "Internal server error." });
+  }
+});
+
+router.get("/reports/remittances", async (req, res) => {
+  try {
+    const range = readRange(req, res);
+    if (!range) return;
+    const ExcelJS = require("exceljs");
+    const { rows, approved, summary } = await loadReport(range.from, range.to);
+
+    const PESO = '"₱"#,##0.00';
+    const WHOLE = '"₱"#,##0.00'; // commissions are whole pesos, shown with .00
+    const HEADER_FILL = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E5AAA" } };
+    // Style only the cells that hold a heading (not the whole row).
+    const styleHeader = (row, colCount) => {
+      for (let i = 1; i <= colCount; i++) {
+        const c = row.getCell(i);
+        c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        c.fill = HEADER_FILL;
+        c.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      }
+      row.height = 28;
+    };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "JAPS";
+    wb.created = new Date();
+    const isDaily = range.from === range.to;
+    if (isDaily) buildDailySheet(wb, rows, range.from);
+
+    // ── Sheet 1: Summary ──────────────────────────────────────────────────
+    const ws1 = wb.addWorksheet("Summary");
+    ws1.columns = [{ width: 44 }, { width: 24 }];
+    const GREY = { argb: "FF6B7280" };
+    const thin = { style: "thin", color: { argb: "FFD1D5DB" } };
+
+    ws1.mergeCells("A1:B1");
+    ws1.getCell("A1").value = "JAPS Remittance Report";
+    ws1.getCell("A1").font = { bold: true, size: 16 };
+    ws1.mergeCells("A2:B2");
+    ws1.getCell("A2").value =
+      range.from === range.to
+        ? `Date: ${range.from}  ·  Approved remittances only`
+        : `Period: ${range.from} to ${range.to}  ·  Approved remittances only`;
+    ws1.getCell("A2").font = { italic: true, color: GREY };
+    ws1.addRow([]);
+
+    styleHeader(ws1.addRow(["Particulars", "Total"]), 2);
+
+    const section = (title) => {
+      const r = ws1.addRow([title]);
+      ws1.mergeCells(r.number, 1, r.number, 2);
+      r.getCell(1).font = { bold: true, color: { argb: "FF1E5AAA" } };
+      r.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8F0FB" } };
+      r.getCell(1).alignment = { vertical: "middle" };
+      r.height = 22;
+    };
+    const line = (label, value, fmt, opts = {}) => {
+      const r = ws1.addRow([label, value]);
+      r.getCell(1).alignment = { indent: 1 };
+      r.getCell(2).numFmt = fmt;
+      r.getCell(2).alignment = { horizontal: "right" };
+      r.eachCell((c) => (c.border = { bottom: thin }));
+      if (opts.bold) {
+        r.font = { bold: true };
+        r.eachCell((c) => {
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF3C7" } };
+          c.border = { top: { style: "thin" }, bottom: { style: "double" } };
+        });
+      }
+    };
+
+    section("Remittances");
+    line("Approved remittances", summary.remittances, "0");
+
+    section("Income");
+    line("Gross income", summary.gross_income, PESO);
+    line("Less: total expenses", summary.total_expenses, PESO);
+    line("Net gross", summary.net_gross, PESO);
+
+    section("Commissions");
+    line("Driver commission", summary.driver_commission, WHOLE);
+    line("Conductor commission", summary.conductor_commission, WHOLE);
+
+    section("Collection");
+    line("Net collection", summary.net_collection, PESO);
+    line("Cash deposit", summary.cash_deposit, PESO);
+    line("Total revenue", summary.total_revenue, PESO, { bold: true });
+
+    section("Cash received");
+    line("Cash remitted (received by audit teller)", summary.cash_received, PESO);
+    line(
+      "Difference (cash remitted − total revenue)",
+      summary.cash_received - summary.total_revenue,
+      PESO,
+    );
+
+    ws1.addRow([]);
+    const note = ws1.addRow([
+      `Not included in the totals: ${summary.pending} pending, ${summary.rejected} rejected.`,
+    ]);
+    ws1.mergeCells(note.number, 1, note.number, 2);
+    note.getCell(1).font = { italic: true, color: GREY };
+
+    if (!isDaily) {
+    // ── Sheet 2: Remittances (all statuses) ───────────────────────────────
+    const ws2 = wb.addWorksheet("Remittances", { views: [{ state: "frozen", ySplit: 1 }] });
+    ws2.columns = [
+      { header: "ID", key: "id", width: 8 },
+      { header: "Date", key: "date", width: 13 },
+      { header: "Status", key: "status", width: 12 },
+      { header: "Bus", key: "bus", width: 12 },
+      { header: "Conductor", key: "conductor", width: 22 },
+      { header: "Driver", key: "driver", width: 22 },
+      { header: "Trips", key: "trips", width: 8 },
+      { header: "Gross Income", key: "gross", width: 16 },
+      { header: "Expenses", key: "exp", width: 14 },
+      { header: "Net Gross", key: "netGross", width: 16 },
+      { header: "Driver Commission", key: "dc", width: 18 },
+      { header: "Conductor Commission", key: "cc", width: 20 },
+      { header: "Net Collection", key: "nc", width: 16 },
+      { header: "Cash Deposit", key: "cd", width: 15 },
+      { header: "Total Revenue", key: "rev", width: 16 },
+      { header: "Cash Remitted", key: "cr", width: 16 },
+      { header: "Approved By", key: "by", width: 20 },
+    ];
+    styleHeader(ws2.getRow(1), 17);
+    const statusLabel = { submitted: "Pending", approved: "Approved", rejected: "Rejected" };
+    for (const r of rows) {
+      ws2.addRow({
+        id: r.id,
+        date: r.date,
+        status: statusLabel[r.status] || r.status,
+        bus: r.BusModel ? r.BusModel.bus_number : "",
+        conductor: fullName(r.conductor),
+        driver: fullName(r.driver),
+        trips: num(r.no_of_trips),
+        gross: num(r.gross_income),
+        exp: num(r.total_expenses),
+        netGross: num(r.gross_income) - num(r.total_expenses),
+        dc: Math.round(num(r.driver_commission)),
+        cc: Math.round(num(r.conductor_commission)),
+        nc: num(r.net_collection),
+        cd: num(r.cash_deposit),
+        rev: num(r.net_collection) + num(r.cash_deposit),
+        cr: r.cash_received == null ? null : num(r.cash_received),
+        by: fullName(r.approver),
+      });
+    }
+    ["gross", "exp", "netGross", "dc", "cc", "nc", "cd", "rev", "cr"].forEach((k) => {
+      ws2.getColumn(k).numFmt = PESO;
+    });
+    ws2.autoFilter = { from: "A1", to: "Q1" };
+
+    // ── Sheet 3: Daily (approved only) ────────────────────────────────────
+    const ws3 = wb.addWorksheet("Daily", { views: [{ state: "frozen", ySplit: 1 }] });
+    ws3.columns = [
+      { header: "Date", key: "date", width: 14 },
+      { header: "Remittances", key: "count", width: 14 },
+      { header: "Net Collection", key: "nc", width: 18 },
+      { header: "Cash Deposit", key: "cd", width: 16 },
+      { header: "Total Revenue", key: "rev", width: 18 },
+    ];
+    styleHeader(ws3.getRow(1), 5);
+    const byDay = new Map();
+    for (const r of approved) {
+      const k = dateKey(r.date);
+      const d = byDay.get(k) || { count: 0, nc: 0, cd: 0 };
+      d.count += 1;
+      d.nc += num(r.net_collection);
+      d.cd += num(r.cash_deposit);
+      byDay.set(k, d);
+    }
+    for (const [k, d] of [...byDay.entries()].sort()) {
+      ws3.addRow({ date: k, count: d.count, nc: d.nc, cd: d.cd, rev: d.nc + d.cd });
+    }
+    ["nc", "cd", "rev"].forEach((k) => (ws3.getColumn(k).numFmt = PESO));
+    if (byDay.size) {
+      const t = ws3.addRow({
+        date: "Total",
+        count: summary.remittances,
+        nc: summary.net_collection,
+        cd: summary.cash_deposit,
+        rev: summary.total_revenue,
+      });
+      t.font = { bold: true };
+    }
+
+    }
+
+    const fileName = isDaily
+      ? `JAPS-Daily-Report_${range.from}.xlsx`
+      : `JAPS-Remittance-Report_${range.from}_to_${range.to}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Error building remittance report:", error);
+    if (!res.headersSent)
+      return res.status(500).json({ message: "Internal server error." });
+  }
+});
+
 module.exports = router;

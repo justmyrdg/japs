@@ -6,6 +6,7 @@ import { NotificationBell } from '../../../../shared/components/notification-bel
 
 interface NavItem {
   label: string;
+  shortLabel?: string;
   icon: string;
   route: string;
 }
@@ -21,11 +22,12 @@ export class AuditTellerLayout {
 
   user = this.auth.getUser();
   sidebarOpen = signal(true);
+  userMenuOpen = signal(false);
   showLogoutConfirm = signal(false);
 
   navItems: NavItem[] = [
-    { label: 'Dashboard', icon: 'pi-home', route: 'dashboard' },
-    { label: 'Remittances', icon: 'pi-file-check', route: 'remittances' },
+    { label: 'Dashboard', shortLabel: 'Dashboard', icon: 'pi-home', route: 'dashboard' },
+    { label: 'Remittances', shortLabel: 'Remittances', icon: 'pi-file-check', route: 'remittances' },
   ];
 
   toggleSidebar(): void {
@@ -39,7 +41,16 @@ export class AuditTellerLayout {
     return (first + last).toUpperCase();
   }
 
+  toggleUserMenu(): void {
+    this.userMenuOpen.update((v) => !v);
+  }
+
+  closeUserMenu(): void {
+    this.userMenuOpen.set(false);
+  }
+
   confirmLogout(): void {
+    this.closeUserMenu();
     this.showLogoutConfirm.set(true);
   }
 

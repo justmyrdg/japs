@@ -28,6 +28,7 @@ export class OwnerLayout {
   navItems: NavItem[] = [
     { label: 'Dashboard', icon: 'pi-chart-bar', route: 'dashboard' },
     { label: 'Remittances', icon: 'pi-book', route: 'remittances' },
+    { label: 'Reports', icon: 'pi-file-excel', route: 'reports' },
     { label: 'Buses', icon: 'pi-car', route: 'buses' },
     { label: 'Routes', icon: 'pi-map', route: 'routes' },
     { label: 'Fare Settings', icon: 'pi-money-bill', route: 'fare-settings' },

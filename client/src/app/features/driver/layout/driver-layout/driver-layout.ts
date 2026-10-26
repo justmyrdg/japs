@@ -6,6 +6,7 @@ import { NotificationBell } from '../../../../shared/components/notification-bel
 
 interface NavItem {
   label: string;
+  shortLabel?: string;
   icon: string;
   route: string;
 }
@@ -22,11 +23,12 @@ export class DriverLayout {
 
   user = this.auth.getUser();
   sidebarOpen = signal(true);
+  userMenuOpen = signal(false);
   showLogoutConfirm = signal(false);
 
   navItems: NavItem[] = [
-    { label: 'My Schedule', icon: 'pi-calendar', route: 'dashboard' },
-    { label: 'My Remittances', icon: 'pi-file-check', route: 'remittances' },
+    { label: 'My Schedule', shortLabel: 'Schedule', icon: 'pi-calendar', route: 'dashboard' },
+    { label: 'My Remittances', shortLabel: 'Remit', icon: 'pi-file-check', route: 'remittances' },
   ];
 
   /** First letters of the first and last name, for the header avatar. */
@@ -40,7 +42,16 @@ export class DriverLayout {
     this.sidebarOpen.update((v) => !v);
   }
 
+  toggleUserMenu(): void {
+    this.userMenuOpen.update((v) => !v);
+  }
+
+  closeUserMenu(): void {
+    this.userMenuOpen.set(false);
+  }
+
   confirmLogout(): void {
+    this.closeUserMenu();
     this.showLogoutConfirm.set(true);
   }
 
